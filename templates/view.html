@@ -5,14 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Analiza PCAP: {{ filename }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-bs5/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/datatables.net@1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/datatables.net-bs5@1.11.5/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js"></script>
     <style>
         body {
             padding-top: 2rem;
             padding-bottom: 2rem;
         }
         .packet-details {
-            max-height: 500px;
+            max-height: 600px;
             overflow-y: auto;
         }
         pre {
@@ -25,10 +32,18 @@
             height: 300px;
             margin-bottom: 1rem;
         }
+        #networkGraph {
+            width: 100%;
+            height: 500px;
+            border: 1px solid lightgray;
+        }
+        .tab-content {
+            padding: 15px;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container-fluid">
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Strona główna</a></li>
@@ -46,179 +61,275 @@
             {% endif %}
         {% endwith %}
         
-        <div class="row mb-4">
-            <div class="col-md-12 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h4>Podsumowanie</h4>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <p><strong>Łączna liczba pakietów:</strong> {{ stats.total_packets }}</p>
-                                
-                                <h5>Najczęściej występujące adresy IP:</h5>
-                                <ul>
-                                    {% for ip, count in stats.top_ips.items() %}
-                                        <li>{{ ip }}: {{ count }} pakietów</li>
-                                    {% endfor %}
-                                </ul>
+        <!-- Zakładki główne -->
+        <ul class="nav nav-tabs mb-4" id="mainTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab">Dashboard</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="packets-tab" data-bs-toggle="tab" data-bs-target="#packets" type="button" role="tab">Pakiety</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced" type="button" role="tab">Analizy zaawansowane</button>
+            </li>
+        </ul>
+        
+        <div class="tab-content" id="mainTabContent">
+            <!-- Dashboard -->
+            <div class="tab-pane fade show active" id="dashboard" role="tabpanel">
+                <div class="row">
+                    <!-- Podstawowe informacje -->
+                    <div class="col-md-12 mb-4">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h4>Podsumowanie</h4>
+                                <button id="generateReportBtn" class="btn btn-primary">Generuj raport PDF</button>
                             </div>
-                            <div class="col-md-6">
-                                <h5>Protokoły:</h5>
-                                <ul>
-                                    {% for proto, count in stats.protocols.items() %}
-                                        <li>{{ proto }}: {{ count }} pakietów</li>
-                                    {% endfor %}
-                                </ul>
-                                
-                                <h5>Najczęściej występujące porty:</h5>
-                                <ul>
-                                    {% for port, count in stats.top_ports.items() %}
-                                        <li>{{ port }}: {{ count }} pakietów</li>
-                                    {% endfor %}
-                                </ul>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <p><strong>Łączna liczba pakietów:</strong> {{ stats.total_packets }}</p>
+                                        
+                                        <h5>Najczęściej występujące adresy IP:</h5>
+                                        <ul>
+                                            {% for ip, count in stats.top_ips.items() %}
+                                                <li>{{ ip }}: {{ count }} pakietów</li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h5>Protokoły:</h5>
+                                        <ul>
+                                            {% for proto, count in stats.protocols.items() %}
+                                                <li>{{ proto }}: {{ count }} pakietów</li>
+                                            {% endfor %}
+                                        </ul>
+                                        
+                                        <h5>Najczęściej występujące porty:</h5>
+                                        <ul>
+                                            {% for port, count in stats.top_ports.items() %}
+                                                <li>{{ port }}: {{ count }} pakietów</li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Wykresy -->
+                    <div class="col-md-6">
+                        <div class="card chart-container">
+                            <div class="card-header">
+                                <h4>Protokoły</h4>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="protocolChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card chart-container">
+                            <div class="card-header">
+                                <h4>Najczęstsze porty</h4>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="portChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card chart-container">
+                            <div class="card-header">
+                                <h4>Rozkład czasowy</h4>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="timeChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card chart-container">
+                            <div class="card-header">
+                                <h4>Rozkład wielkości pakietów</h4>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="packetSizeChart"></canvas>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <div class="col-md-6">
-                <div class="card chart-container">
-                    <div class="card-header">
-                        <h4>Protokoły</h4>
+            <!-- Pakiety -->
+            <div class="tab-pane fade" id="packets" role="tabpanel">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h4>Tabela pakietów</h4>
+                        <a href="{{ url_for('download_file', filename=filename) }}" class="btn btn-primary">Pobierz JSON</a>
                     </div>
                     <div class="card-body">
-                        <canvas id="protocolChart"></canvas>
+                        <div class="mb-3">
+                            <input type="text" id="packetSearch" class="form-control" placeholder="Szukaj pakietów...">
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table id="packetsTable" class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Czas</th>
+                                        <th>Źródło</th>
+                                        <th>Cel</th>
+                                        <th>Protokół</th>
+                                        <th>Porty</th>
+                                        <th>Długość</th>
+                                        <th>Akcje</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for packet in data %}
+                                        <tr>
+                                            <td>{{ packet.packet_number }}</td>
+                                            <td>{{ packet.time }}</td>
+                                            <td>{% if packet.ip %}{{ packet.ip.src }}{% endif %}</td>
+                                            <td>{% if packet.ip %}{{ packet.ip.dst }}{% endif %}</td>
+                                            <td>
+                                                {% if packet.tcp %}TCP
+                                                {% elif packet.udp %}UDP
+                                                {% elif packet.ip %}{{ packet.ip.proto }}
+                                                {% else %}Inne
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if packet.tcp %}{{ packet.tcp.sport }} → {{ packet.tcp.dport }}
+                                                {% elif packet.udp %}{{ packet.udp.sport }} → {{ packet.udp.dport }}
+                                                {% else %}-
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ packet.length }}</td>
+                                            <td>
+                                                <button class="btn btn-sm btn-info packet-details-btn" data-packet-id="{{ packet.packet_number }}">Szczegóły</button>
+                                                <script id="packet-data-{{ packet.packet_number }}" type="application/json">{{ packet | tojson }}</script>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <div class="col-md-6">
-                <div class="card chart-container">
-                    <div class="card-header">
-                        <h4>Najczęstsze porty</h4>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="portChart"></canvas>
+            <!-- Analizy zaawansowane -->
+            <div class="tab-pane fade" id="advanced" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-12 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h4>Graf komunikacji między hostami</h4>
+                            </div>
+                            <div class="card-body">
+                                <div id="networkGraph"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
         
-        <div class="card mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h4>Szczegóły pakietów</h4>
-                <a href="{{ url_for('download_file', filename=filename) }}" class="btn btn-primary">Pobierz JSON</a>
-            </div>
-            <div class="card-body packet-details">
-                <div class="mb-3">
-                    <input type="text" id="packetSearch" class="form-control" placeholder="Szukaj pakietów...">
+        <!-- Modal szczegółów pakietu -->
+        <div class="modal fade" id="packetModal" tabindex="-1" aria-labelledby="packetModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="packetModalLabel">Szczegóły pakietu</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" id="packetModalBody">
+                        <!-- Zawartość zostanie wypełniona przez JavaScript -->
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+                    </div>
                 </div>
-                
-                <div class="accordion" id="packetsAccordion">
-                    {% for packet in data %}
-                        <div class="accordion-item packet-item">
-                            <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#packet{{ packet.packet_number }}" aria-expanded="false">
-                                    Pakiet #{{ packet.packet_number }} 
-                                    {% if packet.ip %}
-                                        - {{ packet.ip.src }} → {{ packet.ip.dst }}
-                                        {% if packet.tcp %}
-                                            - TCP Port {{ packet.tcp.sport }} → {{ packet.tcp.dport }}
-                                        {% elif packet.udp %}
-                                            - UDP Port {{ packet.udp.sport }} → {{ packet.udp.dport }}
-                                        {% endif %}
-                                    {% endif %}
-                                    - {{ packet.time }}
-                                </button>
-                            </h2>
-                            <div id="packet{{ packet.packet_number }}" class="accordion-collapse collapse" data-bs-parent="#packetsAccordion">
-                                <div class="accordion-body">
-                                    <pre>{{ packet | tojson(indent=2) }}</pre>
+            </div>
+        </div>
+        
+        <!-- Modal generowania raportu -->
+        <div class="modal fade" id="reportModal" tabindex="-1" aria-labelledby="reportModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form id="generateReportForm">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="reportModalLabel">Generuj raport PDF</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Wybierz elementy, które chcesz uwzględnić w raporcie:</p>
+                            <div id="reportOptions">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="summary" id="option-summary" checked>
+                                    <label class="form-check-label" for="option-summary">Podsumowanie</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="protocols" id="option-protocols" checked>
+                                    <label class="form-check-label" for="option-protocols">Wykres protokołów</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="ports" id="option-ports" checked>
+                                    <label class="form-check-label" for="option-ports">Wykres portów</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="time" id="option-time" checked>
+                                    <label class="form-check-label" for="option-time">Rozkład czasowy</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="packet_size" id="option-size" checked>
+                                    <label class="form-check-label" for="option-size">Rozkład wielkości pakietów</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="network" id="option-network" checked>
+                                    <label class="form-check-label" for="option-network">Graf komunikacji</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="top_ips" id="option-ips" checked>
+                                    <label class="form-check-label" for="option-ips">Lista najczęstszych adresów IP</label>
                                 </div>
                             </div>
                         </div>
-                    {% endfor %}
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" id="selectAllBtn">Zaznacz wszystko</button>
+                            <button type="button" class="btn btn-secondary" id="deselectAllBtn">Odznacz wszystko</button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                            <button type="submit" class="btn btn-primary">Wygeneruj</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
     </div>
     
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Dane dla wykresów (przekazywane z serwera do JavaScript) -->
+    <script id="protocolData" type="application/json">{{ stats.protocols | tojson }}</script>
+    <script id="portData" type="application/json">{{ stats.top_ports_data | tojson }}</script>
+    <script id="timeData" type="application/json">{{ stats.time_distribution | tojson }}</script>
+    <script id="packetSizeData" type="application/json">{{ stats.packet_size_distribution | tojson }}</script>
+    <script id="networkData" type="application/json">{{ stats.network_graph | tojson }}</script>
+    <script id="geoData" type="application/json">{{ stats.geo_data | tojson }}</script>
+    
+    <!-- Dane do generowania raportu -->
     <script>
-        // Wyszukiwanie pakietów
-        document.getElementById('packetSearch').addEventListener('input', function(e) {
-            const searchTerm = e.target.value.toLowerCase();
-            const packetItems = document.querySelectorAll('.packet-item');
-            
-            packetItems.forEach(item => {
-                const text = item.textContent.toLowerCase();
-                if (text.includes(searchTerm)) {
-                    item.style.display = 'block';
-                } else {
-                    item.style.display = 'none';
-                }
-            });
-        });
-        
-        // Wykres protokołów
-        const protocolCtx = document.getElementById('protocolChart').getContext('2d');
-        const protocolChart = new Chart(protocolCtx, {
-            type: 'pie',
-            data: {
-                labels: [{% for proto in stats.protocols %}'{{ proto }}',{% endfor %}],
-                datasets: [{
-                    data: [{% for proto, count in stats.protocols.items() %}{{ count }},{% endfor %}],
-                    backgroundColor: [
-                        'rgba(54, 162, 235, 0.7)',
-                        'rgba(255, 99, 132, 0.7)',
-                        'rgba(255, 206, 86, 0.7)',
-                        'rgba(75, 192, 192, 0.7)',
-                        'rgba(153, 102, 255, 0.7)'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false
-            }
-        });
-        
-        // Wykres portów
-        const portData = [
-            {% for port, count in stats.top_ports.items() %}
-                {% if loop.index <= 5 %}
-                    {
-                        port: {{ port }},
-                        count: {{ count }}
-                    },
-                {% endif %}
-            {% endfor %}
-        ];
-        
-        const portCtx = document.getElementById('portChart').getContext('2d');
-        const portChart = new Chart(portCtx, {
-            type: 'bar',
-            data: {
-                labels: portData.map(item => `Port ${item.port}`),
-                datasets: [{
-                    label: 'Liczba pakietów',
-                    data: portData.map(item => item.count),
-                    backgroundColor: 'rgba(54, 162, 235, 0.7)'
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
+        const filename = "{{ filename }}";
     </script>
+    
+    <!-- Skrypty bootstrapa -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Nasz własny skrypt -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>
