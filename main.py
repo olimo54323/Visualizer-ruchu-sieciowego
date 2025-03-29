@@ -263,21 +263,21 @@ def generate_chart_image(chart_type, data, title, width=800, height=400):
         
         plt.bar(labels, values)
         plt.xticks(rotation=45)
-        plt.ylabel('Liczba pakietów')
+        plt.ylabel('Number of Packets')
     
     elif chart_type == 'line':
         # Wykres liniowy (np. dla rozkładu czasowego)
         plt.plot(data['labels'], data['values'])
         plt.xticks(rotation=45)
-        plt.ylabel('Liczba pakietów')
+        plt.ylabel('Number of Packets')
         plt.tight_layout()
     
     elif chart_type == 'histogram':
         # Histogram (np. dla wielkości pakietów)
         plt.bar(data['labels'], data['values'])
         plt.xticks(rotation=45)
-        plt.ylabel('Liczba pakietów')
-        plt.xlabel('Wielkość pakietu (bajty)')
+        plt.ylabel('Number of Packets')
+        plt.xlabel('Packet Size (bytes)')
     
     elif chart_type == 'network':
         # Graf sieci (dla komunikacji między hostami)
@@ -315,16 +315,17 @@ def generate_chart_image(chart_type, data, title, width=800, height=400):
     
     return img_data
 
-# Funkcja do generowania raportu PDF
+# Funkcja do generowania raportu PDF (bez interaktywnych linków)
 def generate_pdf_report(filename, data, stats, options):
     # Utworzenie dokumentu PDF
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     # Wyciągnij podstawową nazwę pliku bez rozszerzenia
     base_filename = os.path.splitext(os.path.basename(filename))[0]
     # Utwórz nazwę raportu zgodnie z formatem: "raport_pcap_<data>_<godzina>.pdf"
-    report_filename = f"raport_{base_filename}_{timestamp}.pdf"
+    report_filename = f"report_{base_filename}_{timestamp}.pdf"
     report_path = os.path.join(app.config['UPLOAD_FOLDER'], report_filename)
     
+    # Tworzenie dokumentu
     doc = SimpleDocTemplate(
         report_path,
         pagesize=A4,
@@ -342,17 +343,42 @@ def generate_pdf_report(filename, data, stats, options):
     elements = []
     
     # Tytuł
-    elements.append(Paragraph(f"Raport analizy ruchu sieciowego", title_style))
-    elements.append(Paragraph(f"Plik: {filename}", subtitle_style))
-    elements.append(Paragraph(f"Data wygenerowania: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", normal_style))
+    elements.append(Paragraph(f"Network Traffic Analysis Report", title_style))
+    elements.append(Paragraph(f"File: {filename}", subtitle_style))
+    elements.append(Paragraph(f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", normal_style))
+    elements.append(Spacer(1, 0.5*inch))
+    
+    # Spis treści
+    elements.append(Paragraph("Table of Contents", subtitle_style))
+    
+    # Tworzenie pozycji spisu treści
+    toc_items = []
+    if 'summary' in options:
+        toc_items.append("Summary")
+    if 'protocols' in options and stats['protocols']:
+        toc_items.append("Protocol Distribution")
+    if 'ports' in options and stats['top_ports']:
+        toc_items.append("Most Used Ports")
+    if 'time' in options and 'time_distribution' in stats:
+        toc_items.append("Time Distribution")
+    if 'packet_size' in options and 'packet_size_distribution' in stats:
+        toc_items.append("Packet Size Distribution")
+    if 'network' in options and 'network_graph' in stats:
+        toc_items.append("Network Communication Graph")
+    if 'top_ips' in options and stats['top_ips']:
+        toc_items.append("Most Common IP Addresses")
+    
+    # Dodanie spisu treści jako zwykłego tekstu
+    for title in toc_items:
+        elements.append(Paragraph(f"• {title}", normal_style))
     elements.append(Spacer(1, 0.5*inch))
     
     # Podsumowanie (jeśli wybrane)
     if 'summary' in options:
-        elements.append(Paragraph("Podsumowanie", subtitle_style))
+        elements.append(Paragraph("Summary", subtitle_style))
         
         summary_data = [
-            ["Całkowita liczba pakietów", str(stats['total_packets'])],
+            ["Total number of packets", str(stats['total_packets'])],
         ]
         
         # Tworzenie tabeli podsumowania
@@ -371,60 +397,60 @@ def generate_pdf_report(filename, data, stats, options):
     
     # Protokoły (jeśli wybrane)
     if 'protocols' in options and stats['protocols']:
-        elements.append(Paragraph("Rozkład protokołów", subtitle_style))
+        elements.append(Paragraph("Protocol Distribution", subtitle_style))
         
         # Generowanie wykresu protokołów
-        chart_img = generate_chart_image('pie', stats['protocols'], 'Rozkład protokołów')
+        chart_img = generate_chart_image('pie', stats['protocols'], 'Protocol Distribution')
         img = Image(chart_img, width=400, height=300)
         elements.append(img)
         elements.append(Spacer(1, 0.2*inch))
     
     # Porty (jeśli wybrane)
     if 'ports' in options and stats['top_ports']:
-        elements.append(Paragraph("Najczęściej używane porty", subtitle_style))
+        elements.append(Paragraph("Most Used Ports", subtitle_style))
         
         # Generowanie wykresu portów
-        chart_img = generate_chart_image('bar', stats['top_ports_data'], 'Najczęściej używane porty')
+        chart_img = generate_chart_image('bar', stats['top_ports_data'], 'Most Used Ports')
         img = Image(chart_img, width=400, height=300)
         elements.append(img)
         elements.append(Spacer(1, 0.2*inch))
     
     # Rozkład czasowy (jeśli wybrane)
     if 'time' in options and 'time_distribution' in stats:
-        elements.append(Paragraph("Rozkład czasowy ruchu", subtitle_style))
+        elements.append(Paragraph("Time Distribution", subtitle_style))
         
         # Generowanie wykresu czasowego
-        chart_img = generate_chart_image('line', stats['time_distribution'], 'Rozkład czasowy ruchu')
+        chart_img = generate_chart_image('line', stats['time_distribution'], 'Time Distribution')
         img = Image(chart_img, width=500, height=300)
         elements.append(img)
         elements.append(Spacer(1, 0.2*inch))
     
     # Rozkład wielkości pakietów (jeśli wybrane)
     if 'packet_size' in options and 'packet_size_distribution' in stats:
-        elements.append(Paragraph("Rozkład wielkości pakietów", subtitle_style))
+        elements.append(Paragraph("Packet Size Distribution", subtitle_style))
         
         # Generowanie histogramu wielkości pakietów
-        chart_img = generate_chart_image('histogram', stats['packet_size_distribution'], 'Rozkład wielkości pakietów')
+        chart_img = generate_chart_image('histogram', stats['packet_size_distribution'], 'Packet Size Distribution')
         img = Image(chart_img, width=400, height=300)
         elements.append(img)
         elements.append(Spacer(1, 0.2*inch))
     
     # Graf komunikacji (jeśli wybrane)
     if 'network' in options and 'network_graph' in stats:
-        elements.append(Paragraph("Graf komunikacji między hostami", subtitle_style))
+        elements.append(Paragraph("Network Communication Graph", subtitle_style))
         
         # Generowanie grafu sieci
-        chart_img = generate_chart_image('network', stats['network_graph'], 'Graf komunikacji')
+        chart_img = generate_chart_image('network', stats['network_graph'], 'Communication Graph')
         img = Image(chart_img, width=500, height=400)
         elements.append(img)
         elements.append(Spacer(1, 0.2*inch))
     
     # Najczęściej występujące adresy IP (jeśli wybrane)
     if 'top_ips' in options and stats['top_ips']:
-        elements.append(Paragraph("Najczęściej występujące adresy IP", subtitle_style))
+        elements.append(Paragraph("Most Common IP Addresses", subtitle_style))
         
         # Tworzenie tabeli z adresami IP
-        ip_data = [["Adres IP", "Liczba pakietów"]]
+        ip_data = [["IP Address", "Number of Packets"]]
         for ip, count in stats['top_ips'].items():
             ip_data.append([ip, str(count)])
         
@@ -442,8 +468,19 @@ def generate_pdf_report(filename, data, stats, options):
         elements.append(ip_table)
         elements.append(Spacer(1, 0.2*inch))
     
-    # Zbudowanie dokumentu
-    doc.build(elements)
+    # Dodaj prostą stopkę z numerem strony
+    def add_page_number(canvas, doc):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 10)
+        canvas.drawCentredString(
+            doc.pagesize[0] / 2, 
+            20, 
+            f"Page {canvas.getPageNumber()}"
+        )
+        canvas.restoreState()
+    
+    # Zbudowanie dokumentu ze stopką
+    doc.build(elements, onFirstPage=add_page_number, onLaterPages=add_page_number)
     
     return report_filename
 
