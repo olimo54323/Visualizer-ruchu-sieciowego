@@ -319,7 +319,10 @@ def generate_chart_image(chart_type, data, title, width=800, height=400):
 def generate_pdf_report(filename, data, stats, options):
     # Utworzenie dokumentu PDF
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_filename = f"raport_pcap_{timestamp}.pdf"
+    # Wyciągnij podstawową nazwę pliku bez rozszerzenia
+    base_filename = os.path.splitext(os.path.basename(filename))[0]
+    # Utwórz nazwę raportu zgodnie z formatem: "raport_pcap_<data>_<godzina>.pdf"
+    report_filename = f"raport_{base_filename}_{timestamp}.pdf"
     report_path = os.path.join(app.config['UPLOAD_FOLDER'], report_filename)
     
     doc = SimpleDocTemplate(
@@ -589,7 +592,10 @@ def generate_report(filename):
 # Pobieranie wygenerowanego raportu PDF
 @app.route('/download_report/<filename>')
 def download_report(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+    # Ustawienie nagłówka Content-Disposition, aby przeglądarka zapisała plik
+    response = make_response(send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True))
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 # Ścieżka do plików statycznych JavaScript i CSS
 @app.route('/static/<path:path>')

@@ -435,8 +435,8 @@ function initReportGenerator() {
     
     reportBtn.addEventListener('click', function() {
         // Przygotowanie modalu z opcjami raportu
-        const modal = new bootstrap.Modal(document.getElementById('reportModal'));
-        modal.show();
+        const reportModal = new bootstrap.Modal(document.getElementById('reportModal'));
+        reportModal.show();
     });
     
     // Obsługa przycisku "Zaznacz wszystko"
@@ -471,7 +471,7 @@ function initReportGenerator() {
         }
         
         // Zamknięcie modalu
-        modal.hide();
+        bootstrap.Modal.getInstance(document.getElementById('reportModal')).hide();
         
         // Ręczne przekierowanie z parametrami
         const params = new URLSearchParams();
