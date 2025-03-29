@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analiza Ruchu Sieciowego</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+        .file-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4 text-center">Analiza Ruchu Sieciowego</h1>
+        
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-info">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h4>Prześlij plik PCAP</h4>
+                    </div>
+                    <div class="card-body">
+                        <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="file" class="form-label">Wybierz plik</label>
+                                <input type="file" class="form-control" id="file" name="file">
+                                <div class="form-text">Dozwolone formaty: .pcap, .pcapng, .cap</div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Prześlij i analizuj</button>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Podaj ścieżkę do pliku PCAP</h4>
+                    </div>
+                    <div class="card-body">
+                        <form action="{{ url_for('upload_file') }}" method="post">
+                            <div class="mb-3">
+                                <label for="file_path" class="form-label">Ścieżka do pliku</label>
+                                <input type="text" class="form-control" id="file_path" name="file_path" placeholder="/ścieżka/do/pliku.pcap">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Analizuj</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Przeanalizowane pliki</h4>
+                    </div>
+                    <div class="card-body file-list">
+                        {% if json_files %}
+                            <ul class="list-group">
+                                {% for file in json_files %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <a href="{{ url_for('view_json', filename=file) }}">{{ file }}</a>
+                                        <div>
+                                            <a href="{{ url_for('download_file', filename=file) }}" class="btn btn-sm btn-outline-secondary">Pobierz</a>
+                                            <a href="{{ url_for('view_json', filename=file) }}" class="btn btn-sm btn-primary">Wyświetl</a>
+                                        </div>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-center">Brak przeanalizowanych plików</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
