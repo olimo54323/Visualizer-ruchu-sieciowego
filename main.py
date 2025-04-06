@@ -19,6 +19,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch, cm
 import networkx as nx
+from reportlab.platypus import PageBreak
 
 # Konfiguracja aplikacji
 app = Flask(__name__)
@@ -122,21 +123,63 @@ def generate_extended_stats(data):
     # Obsługa geolokalizacji (bardzo podstawowa - można rozszerzyć)
     geo_data = []
     
-    # Wykres czasu (przetwarzanie czasu do bucketów)
-    time_buckets = {}
+    # Znajdowanie zakresu czasowego wszystkich pakietów
+    all_times = []
+    for packet in data:
+        try:
+            packet_time = datetime.datetime.fromisoformat(packet['time'])
+            all_times.append(packet_time)
+        except:
+            pass
     
-    # Zbieranie statystyk
+    # Jeśli są dane czasowe, utwórz równomiernie rozłożone buckety
+    if all_times:
+        min_time = min(all_times)
+        max_time = max(all_times)
+        time_range = (max_time - min_time).total_seconds()
+        
+        # Stała liczba punktów na wykresie (np. 60)
+        num_points = 60
+        
+        # Tworzenie równomiernie rozłożonych bucketów
+        time_buckets = {}
+        if time_range > 0:
+            interval_seconds = time_range / num_points
+            
+            # Inicjalizacja pustych bucketów
+            for i in range(num_points + 1):
+                bucket_time = min_time + datetime.timedelta(seconds=i * interval_seconds)
+                bucket_key = bucket_time.strftime('%Y-%m-%d %H:%M:%S')
+                time_buckets[bucket_key] = 0
+            
+            # Przypisanie pakietów do bucketów
+            for packet_time in all_times:
+                # Obliczenie indeksu bucketu dla tego czasu
+                time_diff = (packet_time - min_time).total_seconds()
+                bucket_index = int(time_diff / interval_seconds)
+                if bucket_index >= num_points:
+                    bucket_index = num_points - 1
+                
+                # Dodanie pakietu do odpowiedniego bucketu
+                bucket_time = min_time + datetime.timedelta(seconds=bucket_index * interval_seconds)
+                bucket_key = bucket_time.strftime('%Y-%m-%d %H:%M:%S')
+                time_buckets[bucket_key] = time_buckets.get(bucket_key, 0) + 1
+        else:
+            # Jeśli wszystkie pakiety mają ten sam czas
+            time_buckets[min_time.strftime('%Y-%m-%d %H:%M:%S')] = len(all_times)
+    
+    # Sortowanie czasowych bucketów
+    sorted_time_buckets = dict(sorted(time_buckets.items()))
+    stats['time_distribution'] = {
+        'labels': list(sorted_time_buckets.keys()),
+        'values': list(sorted_time_buckets.values())
+    }
+    
+    # Kontynuacja zbierania pozostałych statystyk...
+    # Zbieranie statystyk protokołów, IP, portów itp.
     for packet in data:
         # Wielkość pakietu
         stats['packet_sizes'].append(packet['length'])
-        
-        # Czas (bucketing)
-        try:
-            packet_time = datetime.datetime.fromisoformat(packet['time'])
-            time_bucket = packet_time.strftime('%Y-%m-%d %H:%M')
-            time_buckets[time_bucket] = time_buckets.get(time_bucket, 0) + 1
-        except:
-            pass
         
         if 'ip' in packet:
             # Protokoły
@@ -241,9 +284,11 @@ def generate_extended_stats(data):
     return stats
 
 # Funkcja generująca obrazy dla raportu PDF
+# Funkcja generująca obrazy dla raportu PDF z poprawioną jakością
 def generate_chart_image(chart_type, data, title, width=800, height=400):
     import numpy as np
-    plt.figure(figsize=(width/100, height/100), dpi=100)
+    # Zwiększyłem DPI dla lepszej jakości wydruku
+    plt.figure(figsize=(width/100, height/100), dpi=300)
     
     if chart_type == 'pie':
         # Wykres kołowy (np. dla protokołów)
@@ -264,12 +309,16 @@ def generate_chart_image(chart_type, data, title, width=800, height=400):
         plt.bar(labels, values)
         plt.xticks(rotation=45)
         plt.ylabel('Number of Packets')
+        # Dostosowanie wielkości etykiet
+        plt.tick_params(axis='both', which='major', labelsize=10)
     
     elif chart_type == 'line':
         # Wykres liniowy (np. dla rozkładu czasowego)
-        plt.plot(data['labels'], data['values'])
+        plt.plot(data['labels'], data['values'], linewidth=2)
         plt.xticks(rotation=45)
         plt.ylabel('Number of Packets')
+        plt.tick_params(axis='both', which='major', labelsize=10)
+        plt.grid(True, linestyle='--', alpha=0.7)
         plt.tight_layout()
     
     elif chart_type == 'histogram':
@@ -278,6 +327,8 @@ def generate_chart_image(chart_type, data, title, width=800, height=400):
         plt.xticks(rotation=45)
         plt.ylabel('Number of Packets')
         plt.xlabel('Packet Size (bytes)')
+        plt.tick_params(axis='both', which='major', labelsize=10)
+        plt.grid(True, linestyle='--', alpha=0.7)
     
     elif chart_type == 'network':
         # Graf sieci (dla komunikacji między hostami)
@@ -292,24 +343,30 @@ def generate_chart_image(chart_type, data, title, width=800, height=400):
             G.add_edge(edge['from'], edge['to'], weight=edge.get('value', 1))
         
         # Layout
-        pos = nx.spring_layout(G)
+        pos = nx.spring_layout(G, seed=42)  # Stały seed dla powtarzalności
         
         # Rysowanie węzłów
         node_weights = [G.nodes[node].get('weight', 1) * 100 for node in G.nodes()]
-        nx.draw_networkx_nodes(G, pos, node_size=node_weights, alpha=0.7)
+        nx.draw_networkx_nodes(G, pos, node_size=node_weights, alpha=0.7, 
+                               node_color='skyblue', edgecolors='black')
         
-        # Rysowanie krawędzi
-        edge_weights = [G.edges[edge].get('weight', 1) for edge in G.edges()]
-        nx.draw_networkx_edges(G, pos, width=edge_weights, alpha=0.5, arrows=True)
+        # Rysowanie krawędzi z dostosowaną grubością
+        edge_weights = [max(1, G.edges[edge].get('weight', 1)) for edge in G.edges()]
+        nx.draw_networkx_edges(G, pos, width=edge_weights, alpha=0.6, arrows=True, 
+                              arrowstyle='->', arrowsize=15)
         
-        # Etykiety
-        nx.draw_networkx_labels(G, pos, font_size=8)
+        # Etykiety z lepszą czytelnością
+        nx.draw_networkx_labels(G, pos, font_size=9, font_weight='bold',
+                              bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
     
-    plt.title(title)
+    plt.title(title, fontsize=14, fontweight='bold')
     
-    # Zapisz wykres do obiektu BytesIO
+    # Zwiększenie marginesów dla lepszego wyglądu
+    plt.tight_layout(pad=2.0)
+    
+    # Zapisz wykres w wysokiej jakości
     img_data = BytesIO()
-    plt.savefig(img_data, format='png', bbox_inches='tight')
+    plt.savefig(img_data, format='png', bbox_inches='tight', dpi=300)
     img_data.seek(0)
     plt.close()
     
@@ -395,55 +452,59 @@ def generate_pdf_report(filename, data, stats, options):
         elements.append(summary_table)
         elements.append(Spacer(1, 0.2*inch))
     
-    # Protokoły (jeśli wybrane)
     if 'protocols' in options and stats['protocols']:
         elements.append(Paragraph("Protocol Distribution", subtitle_style))
         
-        # Generowanie wykresu protokołów
-        chart_img = generate_chart_image('pie', stats['protocols'], 'Protocol Distribution')
+        # Generowanie wykresu protokołów z lepszą jakością
+        chart_img = generate_chart_image('pie', stats['protocols'], 'Protocol Distribution', width=600, height=450)
         img = Image(chart_img, width=400, height=300)
+        img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
         elements.append(img)
-        elements.append(Spacer(1, 0.2*inch))
-    
-    # Porty (jeśli wybrane)
+        elements.append(Spacer(1, 0.3*inch))
+
+    # Dla wykresów portów:
     if 'ports' in options and stats['top_ports']:
         elements.append(Paragraph("Most Used Ports", subtitle_style))
         
-        # Generowanie wykresu portów
-        chart_img = generate_chart_image('bar', stats['top_ports_data'], 'Most Used Ports')
-        img = Image(chart_img, width=400, height=300)
+        # Generowanie wykresu portów z lepszą jakością
+        chart_img = generate_chart_image('bar', stats['top_ports_data'], 'Most Used Ports', width=600, height=450)
+        img = Image(chart_img, width=450, height=300)
+        img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
         elements.append(img)
-        elements.append(Spacer(1, 0.2*inch))
-    
-    # Rozkład czasowy (jeśli wybrane)
+        elements.append(Spacer(1, 0.3*inch))
+
+    # Dla rozkładu czasowego:
     if 'time' in options and 'time_distribution' in stats:
         elements.append(Paragraph("Time Distribution", subtitle_style))
         
-        # Generowanie wykresu czasowego
-        chart_img = generate_chart_image('line', stats['time_distribution'], 'Time Distribution')
+        # Generowanie wykresu czasowego z lepszą jakością
+        chart_img = generate_chart_image('line', stats['time_distribution'], 'Time Distribution', width=700, height=450)
         img = Image(chart_img, width=500, height=300)
+        img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
         elements.append(img)
-        elements.append(Spacer(1, 0.2*inch))
-    
-    # Rozkład wielkości pakietów (jeśli wybrane)
+        elements.append(Spacer(1, 0.3*inch))
+
+    # Dla rozkładu wielkości pakietów:
     if 'packet_size' in options and 'packet_size_distribution' in stats:
         elements.append(Paragraph("Packet Size Distribution", subtitle_style))
         
-        # Generowanie histogramu wielkości pakietów
-        chart_img = generate_chart_image('histogram', stats['packet_size_distribution'], 'Packet Size Distribution')
-        img = Image(chart_img, width=400, height=300)
+        # Generowanie histogramu wielkości pakietów z lepszą jakością
+        chart_img = generate_chart_image('histogram', stats['packet_size_distribution'], 'Packet Size Distribution', width=600, height=450)
+        img = Image(chart_img, width=450, height=300)
+        img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
         elements.append(img)
-        elements.append(Spacer(1, 0.2*inch))
-    
-    # Graf komunikacji (jeśli wybrane)
+        elements.append(Spacer(1, 0.3*inch))
+
+    # Dla grafu komunikacji:
     if 'network' in options and 'network_graph' in stats:
         elements.append(Paragraph("Network Communication Graph", subtitle_style))
         
-        # Generowanie grafu sieci
-        chart_img = generate_chart_image('network', stats['network_graph'], 'Communication Graph')
-        img = Image(chart_img, width=500, height=400)
+        # Generowanie grafu sieci z lepszą jakością
+        chart_img = generate_chart_image('network', stats['network_graph'], 'Communication Graph', width=800, height=600)
+        img = Image(chart_img, width=550, height=450)
+        img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
         elements.append(img)
-        elements.append(Spacer(1, 0.2*inch))
+        elements.append(Spacer(1, 0.3*inch))
     
     # Najczęściej występujące adresy IP (jeśli wybrane)
     if 'top_ips' in options and stats['top_ips']:
@@ -484,6 +545,152 @@ def generate_pdf_report(filename, data, stats, options):
     
     return report_filename
 
+def generate_filtered_packets_report(filename, packets, filter_params):
+    """
+    Generuje raport PDF zawierający tylko pakiety przefiltrowane według ustawionych parametrów
+    
+    Args:
+        filename (str): Nazwa pliku wejściowego do umieszczenia w raporcie
+        packets (list): Lista przefiltrowanych pakietów do umieszczenia w raporcie
+        filter_params (dict): Słownik z parametrami filtrowania do umieszczenia w raporcie
+    
+    Returns:
+        str: Nazwa wygenerowanego pliku raportu
+    """
+    # Utworzenie dokumentu PDF
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_filename = os.path.splitext(os.path.basename(filename))[0]
+    report_filename = f"filtered_packets_{base_filename}_{timestamp}.pdf"
+    report_path = os.path.join(app.config['UPLOAD_FOLDER'], report_filename)
+    
+    # Tworzenie dokumentu
+    doc = SimpleDocTemplate(
+        report_path,
+        pagesize=landscape(A4),
+        rightMargin=36, leftMargin=36,
+        topMargin=36, bottomMargin=36
+    )
+    
+    # Style
+    styles = getSampleStyleSheet()
+    title_style = styles['Heading1']
+    subtitle_style = styles['Heading2']
+    normal_style = styles['Normal']
+    
+    # Lista elementów do dodania do dokumentu
+    elements = []
+    
+    # Tytuł
+    elements.append(Paragraph(f"Filtered Packets Report", title_style))
+    elements.append(Paragraph(f"File: {filename}", subtitle_style))
+    elements.append(Paragraph(f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", normal_style))
+    elements.append(Spacer(1, 0.5*inch))
+    
+    # Zastosowane filtry
+    elements.append(Paragraph("Applied Filters", subtitle_style))
+    
+    # Tworzenie tabeli filtrów
+    filter_data = []
+    for param, value in filter_params.items():
+        if value:  # Dodawaj tylko niepuste filtry
+            filter_data.append([param, value])
+    
+    if filter_data:
+        filter_table = Table(filter_data, colWidths=[150, 300])
+        filter_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.black),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ]))
+        elements.append(filter_table)
+    else:
+        elements.append(Paragraph("No filters applied", normal_style))
+    
+    elements.append(Spacer(1, 0.5*inch))
+    
+    # Podsumowanie
+    elements.append(Paragraph("Summary", subtitle_style))
+    elements.append(Paragraph(f"Total packets matching filters: {len(packets)}", normal_style))
+    elements.append(Spacer(1, 0.5*inch))
+    
+    # Tabela pakietów
+    elements.append(Paragraph("Packets Table", subtitle_style))
+    
+    # Nagłówki kolumn
+    headers = ["#", "Time", "Source IP", "Destination IP", "Protocol", "Ports", "Length"]
+    packet_data = [headers]
+    
+    # Wypełnianie danymi pakietów
+    for packet in packets:
+        row = [
+            str(packet.get('packet_number', '')),
+            packet.get('time', ''),
+            packet.get('ip', {}).get('src', ''),
+            packet.get('ip', {}).get('dst', ''),
+            get_protocol_name(packet),
+            get_ports_str(packet),
+            str(packet.get('length', ''))
+        ]
+        packet_data.append(row)
+    
+    # Tworzenie tabeli pakietów
+    col_widths = [30, 130, 100, 100, 60, 80, 50]
+    packets_table = Table(packet_data, colWidths=col_widths, repeatRows=1)
+    packets_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Numer pakietu wyśrodkowany
+        ('ALIGN', (6, 1), (6, -1), 'RIGHT'),   # Długość wyrównana do prawej
+    ]))
+    
+    elements.append(packets_table)
+    
+    # Dodaj prostą stopkę z numerem strony
+    def add_page_number(canvas, doc):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 10)
+        canvas.drawCentredString(
+            doc.pagesize[0] / 2, 
+            20, 
+            f"Page {canvas.getPageNumber()}"
+        )
+        canvas.restoreState()
+    
+    # Zbudowanie dokumentu ze stopką
+    doc.build(elements, onFirstPage=add_page_number, onLaterPages=add_page_number)
+    
+    return report_filename
+
+# Funkcje pomocnicze do formatowania danych pakietów
+def get_protocol_name(packet):
+    """Zwraca nazwę protokołu pakietu"""
+    if 'tcp' in packet:
+        return "TCP"
+    elif 'udp' in packet:
+        return "UDP"
+    elif 'ip' in packet:
+        return f"IP({packet['ip']['proto']})"
+    else:
+        return "Other"
+
+def get_ports_str(packet):
+    """Zwraca sformatowany ciąg portów (źródłowy -> docelowy)"""
+    if 'tcp' in packet:
+        return f"{packet['tcp']['sport']} → {packet['tcp']['dport']}"
+    elif 'udp' in packet:
+        return f"{packet['udp']['sport']} → {packet['udp']['dport']}"
+    else:
+        return "-"
 # Strona główna
 @app.route('/')
 def index():
@@ -592,6 +799,140 @@ def get_json_data(filename):
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# Endpoint do generowania raportów z filtrowanych pakietów
+@app.route('/generate_filtered_report/<filename>', methods=['POST'])
+def generate_filtered_report(filename):
+    try:
+        file_path = os.path.join(app.config['JSON_FOLDER'], filename)
+        
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Pobierz dane JSON
+        with open(file_path, 'r', encoding='utf-8') as f:
+            all_packets = json.load(f)
+        
+        # Pobierz parametry filtrowania z zapytania POST
+        filter_params = {
+            'Source IP': request.json.get('srcIp', ''),
+            'Destination IP': request.json.get('dstIp', ''),
+            'Protocol': request.json.get('protocol', ''),
+            'Port': request.json.get('port', ''),
+            'Min Length': request.json.get('lengthMin', ''),
+            'Max Length': request.json.get('lengthMax', ''),
+            'Start Time': request.json.get('timeStart', ''),
+            'End Time': request.json.get('timeEnd', '')
+        }
+        
+        # Filtrowanie pakietów według parametrów
+        filtered_packets = filter_packets(all_packets, filter_params)
+        
+        # Generowanie raportu
+        report_filename = generate_filtered_packets_report(filename, filtered_packets, filter_params)
+        
+        # Zwracanie ścieżki do wygenerowanego raportu
+        return jsonify({
+            'success': True,
+            'message': 'Report generated successfully',
+            'report_url': url_for('download_report', filename=report_filename)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error generating filtered report: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Funkcja do filtrowania pakietów
+def filter_packets(packets, filter_params):
+    """
+    Filtruje pakiety według określonych parametrów
+    
+    Args:
+        packets (list): Lista wszystkich pakietów do filtrowania
+        filter_params (dict): Parametry filtrowania
+    
+    Returns:
+        list: Przefiltrowana lista pakietów
+    """
+    filtered = []
+    
+    srcIp = filter_params.get('Source IP', '')
+    dstIp = filter_params.get('Destination IP', '')
+    protocol = filter_params.get('Protocol', '')
+    port = filter_params.get('Port', '')
+    lengthMin = filter_params.get('Min Length', '')
+    lengthMax = filter_params.get('Max Length', '')
+    timeStart = filter_params.get('Start Time', '')
+    timeEnd = filter_params.get('End Time', '')
+    
+    for packet in packets:
+        # Inicjalizacja wartości ważne dla filtrów
+        valid = True
+        
+        # IP Źródłowe
+        if srcIp and 'ip' in packet and packet['ip']['src'] != srcIp:
+            if not srcIp in packet['ip']['src']:  # Częściowe dopasowanie
+                valid = False
+        
+        # IP Docelowe
+        if dstIp and 'ip' in packet and packet['ip']['dst'] != dstIp:
+            if not dstIp in packet['ip']['dst']:  # Częściowe dopasowanie
+                valid = False
+        
+        # Protokół
+        if protocol:
+            packet_protocol = ""
+            if 'tcp' in packet:
+                packet_protocol = "TCP"
+            elif 'udp' in packet:
+                packet_protocol = "UDP"
+            elif 'ip' in packet:
+                packet_protocol = f"IP({packet['ip']['proto']})"
+            
+            if protocol != packet_protocol:
+                valid = False
+        
+        # Port (źródłowy lub docelowy)
+        if port:
+            port_num = int(port)
+            port_found = False
+            
+            if 'tcp' in packet:
+                if packet['tcp']['sport'] == port_num or packet['tcp']['dport'] == port_num:
+                    port_found = True
+            elif 'udp' in packet:
+                if packet['udp']['sport'] == port_num or packet['udp']['dport'] == port_num:
+                    port_found = True
+            
+            if not port_found:
+                valid = False
+        
+        # Długość pakietu
+        if lengthMin and int(packet['length']) < int(lengthMin):
+            valid = False
+        
+        if lengthMax and int(packet['length']) > int(lengthMax):
+            valid = False
+        
+        # Zakres czasowy
+        if timeStart or timeEnd:
+            packet_time = datetime.datetime.fromisoformat(packet['time'])
+            
+            if timeStart:
+                start_time = datetime.datetime.fromisoformat(timeStart)
+                if packet_time < start_time:
+                    valid = False
+            
+            if timeEnd:
+                end_time = datetime.datetime.fromisoformat(timeEnd)
+                if packet_time > end_time:
+                    valid = False
+        
+        # Jeśli pakiet przeszedł wszystkie filtry, dodaj go do listy
+        if valid:
+            filtered.append(packet)
+    
+    return filtered
 
 # Generowanie raportu PDF
 @app.route('/generate_report/<filename>')
