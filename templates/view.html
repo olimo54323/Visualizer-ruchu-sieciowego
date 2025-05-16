@@ -39,10 +39,17 @@
             border-radius: 0.25rem;
         }
         .chart-container {
-            height: 300px;
-            margin-bottom: 1rem;
+        position: relative;
+        min-height: 250px;
+        height: 30vh; 
+        margin-bottom: 1rem;
         }
-        #networkGraph {
+        @media (max-width: 768px) {
+        .chart-container {
+            height: 50vh;
+        }
+        }
+        #networkGraph, #macGraph {
             width: 100%;
             height: 500px;
             border: 1px solid lightgray;
@@ -97,7 +104,7 @@
                             </div>
                             <div class="card-body">
                                 <div class="row">
-                                    <div class="col-md-6">
+                                    <div class="col-md-4">
                                         <p><strong>Łączna liczba pakietów:</strong> {{ stats.total_packets }}</p>
                                         
                                         <h5>Najczęściej występujące adresy IP:</h5>
@@ -107,7 +114,7 @@
                                             {% endfor %}
                                         </ul>
                                     </div>
-                                    <div class="col-md-6">
+                                    <div class="col-md-4">
                                         <h5>Protokoły:</h5>
                                         <ul>
                                             {% for proto, count in stats.protocols.items() %}
@@ -119,6 +126,21 @@
                                         <ul>
                                             {% for port, count in stats.top_ports.items() %}
                                                 <li>{{ port }}: {{ count }} pakietów</li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <h5>Najczęściej występujące adresy MAC:</h5>
+                                        <ul>
+                                            {% for mac, count in stats.top_mac_addresses.items() %}
+                                                <li>{{ mac }}: {{ count }} pakietów</li>
+                                            {% endfor %}
+                                        </ul>
+                                        
+                                        <h5>Producenci urządzeń:</h5>
+                                        <ul>
+                                            {% for vendor, count in stats.top_mac_vendors.items() %}
+                                                <li>{{ vendor }}: {{ count }} pakietów</li>
                                             {% endfor %}
                                         </ul>
                                     </div>
@@ -146,6 +168,28 @@
                             </div>
                             <div class="card-body">
                                 <canvas id="portChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card chart-container">
+                            <div class="card-header">
+                                <h4>Najczęstsze adresy MAC</h4>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="macChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card chart-container">
+                            <div class="card-header">
+                                <h4>Producenci urządzeń</h4>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="vendorChart"></canvas>
                             </div>
                         </div>
                     </div>
@@ -187,6 +231,14 @@
                         <div class="card-body">
                             <div class="row">
                                 <div class="col-md-3 mb-3">
+                                    <label for="filter-src-mac" class="form-label">MAC Źródłowe</label>
+                                    <input type="text" class="form-control filter-input" id="filter-src-mac" placeholder="np. 28:63:36:bd:bc:46">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label for="filter-dst-mac" class="form-label">MAC Docelowe</label>
+                                    <input type="text" class="form-control filter-input" id="filter-dst-mac" placeholder="np. 00:1c:06:35:d8:bc">
+                                </div>
+                                <div class="col-md-3 mb-3">
                                     <label for="filter-src-ip" class="form-label">IP Źródłowe</label>
                                     <input type="text" class="form-control filter-input" id="filter-src-ip" placeholder="np. 192.168.1.1">
                                 </div>
@@ -194,6 +246,8 @@
                                     <label for="filter-dst-ip" class="form-label">IP Docelowe</label>
                                     <input type="text" class="form-control filter-input" id="filter-dst-ip" placeholder="np. 10.0.0.1">
                                 </div>
+                            </div>
+                            <div class="row">
                                 <div class="col-md-3 mb-3">
                                     <label for="filter-protocol" class="form-label">Protokół</label>
                                     <select class="form-select filter-input" id="filter-protocol">
@@ -208,8 +262,6 @@
                                     <label for="filter-port" class="form-label">Port (źródłowy lub docelowy)</label>
                                     <input type="number" class="form-control filter-input" id="filter-port" placeholder="np. 80, 443">
                                 </div>
-                            </div>
-                            <div class="row">
                                 <div class="col-md-3 mb-3">
                                     <label for="filter-length-min" class="form-label">Min. długość pakietu</label>
                                     <input type="number" class="form-control filter-input" id="filter-length-min" placeholder="np. 64">
@@ -218,6 +270,8 @@
                                     <label for="filter-length-max" class="form-label">Max. długość pakietu</label>
                                     <input type="number" class="form-control filter-input" id="filter-length-max" placeholder="np. 1500">
                                 </div>
+                            </div>
+                            <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label for="filter-time-range" class="form-label">Zakres czasowy</label>
                                     <div class="input-group">
@@ -226,11 +280,9 @@
                                         <input type="datetime-local" class="form-control filter-input" id="filter-time-end">
                                     </div>
                                 </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-12">
-                                    <button id="apply-filters" class="btn btn-primary">Zastosuj filtry</button>
-                                    <button id="reset-filters" class="btn btn-secondary ms-2">Resetuj filtry</button>
+                                <div class="col-md-6 mb-3 d-flex align-items-end">
+                                    <button id="apply-filters" class="btn btn-primary me-2">Zastosuj filtry</button>
+                                    <button id="reset-filters" class="btn btn-secondary">Resetuj filtry</button>
                                 </div>
                             </div>
                         </div>
@@ -243,8 +295,11 @@
                                     <tr>
                                         <th>#</th>
                                         <th>Czas</th>
-                                        <th>Źródło</th>
-                                        <th>Cel</th>
+                                        <th>MAC Źródło</th>
+                                        <th>MAC Cel</th>
+                                        <th>Producent</th>
+                                        <th>IP Źródło</th>
+                                        <th>IP Cel</th>
                                         <th>Protokół</th>
                                         <th>Porty</th>
                                         <th>Długość</th>
@@ -256,6 +311,9 @@
                                         <tr>
                                             <td>{{ packet.packet_number }}</td>
                                             <td>{{ packet.time }}</td>
+                                            <td>{% if packet.ethernet %}{{ packet.ethernet.src }}{% endif %}</td>
+                                            <td>{% if packet.ethernet %}{{ packet.ethernet.dst }}{% endif %}</td>
+                                            <td>{% if packet.ethernet %}{{ packet.ethernet.src_vendor }}{% endif %}</td>
                                             <td>{% if packet.ip %}{{ packet.ip.src }}{% endif %}</td>
                                             <td>{% if packet.ip %}{{ packet.ip.dst }}{% endif %}</td>
                                             <td>
@@ -291,10 +349,21 @@
                     <div class="col-md-12 mb-4">
                         <div class="card">
                             <div class="card-header">
-                                <h4>Graf komunikacji między hostami</h4>
+                                <h4>Graf komunikacji między adresami IP</h4>
                             </div>
                             <div class="card-body">
                                 <div id="networkGraph"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-12 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h4>Graf komunikacji między adresami MAC</h4>
+                            </div>
+                            <div class="card-body">
+                                <div id="macGraph"></div>
                             </div>
                         </div>
                     </div>
@@ -345,6 +414,14 @@
                                     <label class="form-check-label" for="option-ports">Ports chart</label>
                                 </div>
                                 <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="mac_addresses" id="option-mac" checked>
+                                    <label class="form-check-label" for="option-mac">MAC addresses chart</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="mac_vendors" id="option-vendors" checked>
+                                    <label class="form-check-label" for="option-vendors">MAC vendors chart</label>
+                                </div>
+                                <div class="form-check">
                                     <input class="form-check-input" type="checkbox" value="time" id="option-time" checked>
                                     <label class="form-check-label" for="option-time">Time distribution</label>
                                 </div>
@@ -354,7 +431,11 @@
                                 </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" value="network" id="option-network" checked>
-                                    <label class="form-check-label" for="option-network">Communication graph</label>
+                                    <label class="form-check-label" for="option-network">IP Communication graph</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="mac_network" id="option-mac-network" checked>
+                                    <label class="form-check-label" for="option-mac-network">MAC Communication graph</label>
                                 </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" value="top_ips" id="option-ips" checked>
@@ -377,9 +458,12 @@
     <!-- Dane dla wykresów (przekazywane z serwera do JavaScript) -->
     <script id="protocolData" type="application/json">{{ stats.protocols | tojson }}</script>
     <script id="portData" type="application/json">{{ stats.top_ports_data | tojson }}</script>
+    <script id="macData" type="application/json">{{ stats.top_mac_data | tojson }}</script>
+    <script id="vendorData" type="application/json">{{ stats.top_mac_vendors | tojson }}</script>
     <script id="timeData" type="application/json">{{ stats.time_distribution | tojson }}</script>
     <script id="packetSizeData" type="application/json">{{ stats.packet_size_distribution | tojson }}</script>
     <script id="networkData" type="application/json">{{ stats.network_graph | tojson }}</script>
+    <script id="macGraphData" type="application/json">{{ stats.mac_graph | tojson }}</script>
     <script id="geoData" type="application/json">{{ stats.geo_data | tojson }}</script>
     
     <!-- Dane do generowania raportu -->

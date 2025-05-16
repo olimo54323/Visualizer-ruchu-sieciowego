@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, make_response
 from werkzeug.utils import secure_filename
-from scapy.all import rdpcap, IP, TCP, UDP
+from scapy.all import rdpcap, IP, TCP, UDP, Ether
 import os
 import json
 import datetime
@@ -46,6 +46,114 @@ def json_serial(obj):
         return str(obj)
     raise TypeError(f"Type {type(obj)} not serializable")
 
+# Słownik popularnych OUI (Organizationally Unique Identifier) dla adresów MAC
+MAC_OUI_VENDORS = {
+    '000000': 'Officially Xerox',
+    '000001': 'SuperLAN',
+    '000002': 'BBN Internal',
+    '000003': 'XEROX CORPORATION',
+    '000004': 'XEROX CORPORATION',
+    '000005': 'XEROX CORPORATION',
+    '00000C': 'Cisco',
+    '00000E': 'Fujitsu',
+    '000010': 'Sytek',
+    '000020': 'DIAB',
+    '000021': 'SC&C',
+    '000022': 'Visual Technology',
+    '000023': 'ABB Automation',
+    '000024': 'Oki Electric Industry',
+    '000029': 'IMC Networks',
+    '00002A': 'TRW',
+    '00002F': 'COMDESIGN',
+    '000032': 'GPT Limited',
+    '000050': 'NETWORK SYSTEMS',
+    '000055': 'AT&T',
+    '000077': 'INTERPHASE',
+    '00007A': 'Ardent',
+    '00007B': 'Research Machines',
+    '0000A7': 'NCD',
+    '0000A9': 'NETWORK SYSTEMS',
+    '0000AA': 'XEROX CORPORATION',
+    '0000B3': 'CIMLINC',
+    '0000B7': 'DOVE',
+    '0000BC': 'Allen-Bradley',
+    '0000C0': 'WESTERN DIGITAL',
+    '0000C5': 'FARALLON',
+    '0000C6': 'HP',
+    '0000C8': 'ALTOS',
+    '0000C9': 'Emulex',
+    '0000D7': 'DARTMOUTH',
+    '0000D8': 'NOVELL',
+    '0000DD': 'Gould',
+    '0000DE': 'UNISYS',
+    '0000E2': 'ACER',
+    '0000EF': 'Alantec',
+    '0000F0': 'Samsung',
+    '0000F2': 'SPIDER SYSTEMS',
+    '0000F3': 'GANDALF DATA',
+    '0000F4': 'Allied Telesis',
+    '0000F5': 'DIAMOND SALES',
+    '0000F6': 'Applied Microsystems',
+    '0000F8': 'DEC',
+    '0000FB': 'RECHNER',
+    '001000': 'Cable Television Laboratories',
+    '001007': 'Cisco',
+    '00100D': 'Cisco',
+    '001011': 'Cisco',
+    '001014': 'Cisco',
+    '00102F': 'Cisco',
+    '001054': 'Cisco',
+    '00105A': '3COM',
+    '0010E7': 'Breezecom',
+    '0010F6': 'Cisco',
+    '0020C2': 'TEXAS INSTRUMENTS',
+    '0020D2': 'RAD Data Communications',
+    '00400B': 'Cisco',
+    '00601D': 'LUCENT TECHNOLOGIES',
+    '00809F': 'ALE International',
+    '00E018': 'ASUSTek',
+    '010203': 'Techsan',
+    '010CCC': 'Apple',
+    '043695': 'Apple',
+    '081196': 'Intel',
+    '087045': 'Intel',
+    '0C8112': 'Intel',
+    '103047': 'Apple',
+    '14FEB5': 'Dell',
+    '182032': 'Apple',
+    '1C6F65': 'Intel',
+    '28633E': 'Siemens',
+    '3C5AB4': 'Google',
+    '3CA9F4': 'Intel',
+    '4044F5': 'Samsung',
+    '4860BC': 'Apple',
+    '506B8D': 'Apple',
+    '58CB52': 'Google',
+    '5C969D': 'Apple',
+    '609084': 'Apple',
+    '68AB1E': 'Apple',
+    '70106F': 'HP',
+    '7CEBAE': 'Hewlett Packard',
+    'A42983': 'Apple',
+    'A860B6': 'Apple',
+    'AC87A3': 'Apple',
+    'B8C111': 'Apple',
+    'C0A53E': 'Apple',
+    'C88550': 'Apple',
+    'D89695': 'Apple',
+    'D8F883': 'Oracle',
+    'E4E0C5': 'Samsung',
+    'F0766F': 'Apple'
+}
+
+# Funkcja do uzyskania nazwy producenta z adresu MAC
+def get_mac_vendor(mac_address):
+    # Normalizacja adresu MAC 
+    mac = mac_address.replace(':', '').replace('-', '').replace('.', '').upper()
+    oui = mac[:6]
+    
+    return MAC_OUI_VENDORS.get(oui, "Unknown")
+
 # Funkcja do przetwarzania pliku PCAP na JSON
 def pcap_to_json(pcap_file):
     try:
@@ -58,6 +166,16 @@ def pcap_to_json(pcap_file):
                 'time': str(datetime.datetime.fromtimestamp(float(packet.time))),
                 'length': len(packet),
             }
+            
+            # Analiza warstwy Ethernet
+            if Ether in packet:
+                packet_data['ethernet'] = {
+                    'src': packet[Ether].src,
+                    'dst': packet[Ether].dst,
+                    'type': hex(packet[Ether].type),
+                    'src_vendor': get_mac_vendor(packet[Ether].src),
+                    'dst_vendor': get_mac_vendor(packet[Ether].dst)
+                }
             
             # Analiza warstwy IP
             if IP in packet:
@@ -110,12 +228,21 @@ def generate_extended_stats(data):
         'protocols': {},
         'top_ips': {},
         'top_ports': {},
+        'top_mac_addresses': {},
+        'top_mac_vendors': {},
+        'mac_communication': [],  # Połączenia między adresami MAC
         'packet_sizes': [],
         'time_distribution': {}
     }
     
     # Dane do network graph
     network_graph = {
+        'nodes': [],
+        'edges': []
+    }
+    
+    # Dane do grafu MAC
+    mac_graph = {
         'nodes': [],
         'edges': []
     }
@@ -175,11 +302,58 @@ def generate_extended_stats(data):
         'values': list(sorted_time_buckets.values())
     }
     
-    # Kontynuacja zbierania pozostałych statystyk...
-    # Zbieranie statystyk protokołów, IP, portów itp.
+    # Zbieranie statystyk protokołów, IP, portów, MAC adresów itp.
     for packet in data:
         # Wielkość pakietu
         stats['packet_sizes'].append(packet['length'])
+        
+        # Zbieranie statystyk adresów MAC
+        if 'ethernet' in packet:
+            src_mac = packet['ethernet']['src']
+            dst_mac = packet['ethernet']['dst']
+            src_vendor = packet['ethernet']['src_vendor']
+            dst_vendor = packet['ethernet']['dst_vendor']
+            
+            # Zbieranie statystyk MAC
+            stats['top_mac_addresses'][src_mac] = stats['top_mac_addresses'].get(src_mac, 0) + 1
+            stats['top_mac_addresses'][dst_mac] = stats['top_mac_addresses'].get(dst_mac, 0) + 1
+            
+            # Zbieranie statystyk producentów
+            stats['top_mac_vendors'][src_vendor] = stats['top_mac_vendors'].get(src_vendor, 0) + 1
+            stats['top_mac_vendors'][dst_vendor] = stats['top_mac_vendors'].get(dst_vendor, 0) + 1
+            
+            # Dodawanie komunikacji MAC do grafu
+            if src_mac not in [n.get('id') for n in mac_graph['nodes']]:
+                mac_graph['nodes'].append({
+                    'id': src_mac,
+                    'label': src_mac,
+                    'title': src_vendor,
+                    'value': stats['top_mac_addresses'][src_mac]
+                })
+            
+            if dst_mac not in [n.get('id') for n in mac_graph['nodes']]:
+                mac_graph['nodes'].append({
+                    'id': dst_mac,
+                    'label': dst_mac,
+                    'title': dst_vendor,
+                    'value': stats['top_mac_addresses'][dst_mac]
+                })
+            
+            # Dodanie krawędzi z wartością
+            edge_id = f"{src_mac}-{dst_mac}"
+            existing_edge = next((e for e in mac_graph['edges'] if e.get('id') == edge_id), None)
+            
+            if existing_edge:
+                existing_edge['value'] += 1
+                existing_edge['title'] = f"Pakiety: {existing_edge['value']}"
+            else:
+                mac_graph['edges'].append({
+                    'id': edge_id,
+                    'from': src_mac,
+                    'to': dst_mac,
+                    'value': 1,
+                    'title': 'Pakiety: 1'
+                })
         
         if 'ip' in packet:
             # Protokoły
@@ -270,20 +444,28 @@ def generate_extended_stats(data):
     # Sortowanie statystyk
     stats['top_ips'] = dict(sorted(stats['top_ips'].items(), key=lambda x: x[1], reverse=True)[:10])
     stats['top_ports'] = dict(sorted(stats['top_ports'].items(), key=lambda x: x[1], reverse=True)[:10])
+    stats['top_mac_addresses'] = dict(sorted(stats['top_mac_addresses'].items(), key=lambda x: x[1], reverse=True)[:10])
+    stats['top_mac_vendors'] = dict(sorted(stats['top_mac_vendors'].items(), key=lambda x: x[1], reverse=True)[:10])
     
     # Konwersja top_ports do formatu dla wykresu
     top_ports_data = [{'port': port, 'count': count} for port, count in list(stats['top_ports'].items())[:5]]
     stats['top_ports_data'] = top_ports_data
     
+    # Konwersja top_mac_addresses do formatu dla wykresu
+    top_mac_data = [{'mac': mac, 'count': count} for mac, count in list(stats['top_mac_addresses'].items())[:5]]
+    stats['top_mac_data'] = top_mac_data
+    
     # Dodanie danych do network graph
     stats['network_graph'] = network_graph
+    
+    # Dodanie danych do mac graph
+    stats['mac_graph'] = mac_graph
     
     # Dodanie danych geolokalizacyjnych (puste, do rozszerzenia)
     stats['geo_data'] = geo_data
     
     return stats
 
-# Funkcja generująca obrazy dla raportu PDF
 # Funkcja generująca obrazy dla raportu PDF z poprawioną jakością
 def generate_chart_image(chart_type, data, title, width=800, height=400):
     import numpy as np
@@ -303,7 +485,7 @@ def generate_chart_image(chart_type, data, title, width=800, height=400):
             labels = list(data.keys())
             values = list(data.values())
         else:  # Lista słowników
-            labels = [str(item['port']) for item in data]
+            labels = [str(item.get('port', item.get('mac', ''))) for item in data]
             values = [item['count'] for item in data]
         
         plt.bar(labels, values)
@@ -358,6 +540,61 @@ def generate_chart_image(chart_type, data, title, width=800, height=400):
         # Etykiety z lepszą czytelnością
         nx.draw_networkx_labels(G, pos, font_size=9, font_weight='bold',
                               bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+    
+    elif chart_type == 'mac_network':
+        # Graf komunikacji między adresami MAC
+        G = nx.DiGraph()
+        
+        # Dodawanie węzłów
+        for node in data['nodes']:
+            G.add_node(node['id'], weight=node.get('value', 1), title=node.get('title', ''))
+        
+        # Dodawanie krawędzi
+        for edge in data['edges']:
+            G.add_edge(edge['from'], edge['to'], weight=edge.get('value', 1))
+        
+        # Layout
+        pos = nx.spring_layout(G, seed=42)  # Stały seed dla powtarzalności
+        
+        # Rysowanie węzłów z kolorami opartymi na producentach
+        node_weights = [G.nodes[node].get('weight', 1) * 80 for node in G.nodes()]
+        
+        # Określenie kolorów węzłów na podstawie producentów
+        node_colors = []
+        unique_vendors = set()
+        for node in G.nodes:
+            vendor = G.nodes[node].get('title', 'Unknown')
+            unique_vendors.add(vendor)
+        
+        vendor_color_map = {}
+        colors = plt.cm.tab20(np.linspace(0, 1, len(unique_vendors)))
+        for i, vendor in enumerate(unique_vendors):
+            vendor_color_map[vendor] = colors[i]
+        
+        for node in G.nodes:
+            vendor = G.nodes[node].get('title', 'Unknown')
+            node_colors.append(vendor_color_map.get(vendor, 'gray'))
+        
+        nx.draw_networkx_nodes(G, pos, node_size=node_weights, alpha=0.7, 
+                               node_color=node_colors, edgecolors='black')
+        
+        # Rysowanie krawędzi z dostosowaną grubością
+        edge_weights = [max(1, G.edges[edge].get('weight', 1)) for edge in G.edges()]
+        nx.draw_networkx_edges(G, pos, width=edge_weights, alpha=0.6, arrows=True, 
+                              arrowstyle='->', arrowsize=15)
+        
+        # Etykiety z lepszą czytelnością - skrócone adresy MAC dla lepszej czytelności
+        short_labels = {node: node[-8:] for node in G.nodes}
+        nx.draw_networkx_labels(G, pos, labels=short_labels, font_size=8, font_weight='bold',
+                              bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+        
+        # Legenda producentów
+        legend_elements = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=vendor_color_map[vendor], 
+                                     markersize=10, label=vendor) for vendor in vendor_color_map]
+        
+        # Dodaj legendę tylko jeśli nie jest za duża
+        if len(legend_elements) <= 10:
+            plt.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1, 1))
     
     plt.title(title, fontsize=14, fontweight='bold')
     
@@ -416,12 +653,18 @@ def generate_pdf_report(filename, data, stats, options):
         toc_items.append("Protocol Distribution")
     if 'ports' in options and stats['top_ports']:
         toc_items.append("Most Used Ports")
+    if 'mac_addresses' in options and stats['top_mac_addresses']:
+        toc_items.append("Most Used MAC Addresses")
+    if 'mac_vendors' in options and stats['top_mac_vendors']:
+        toc_items.append("MAC Vendors Distribution")
     if 'time' in options and 'time_distribution' in stats:
         toc_items.append("Time Distribution")
     if 'packet_size' in options and 'packet_size_distribution' in stats:
         toc_items.append("Packet Size Distribution")
     if 'network' in options and 'network_graph' in stats:
-        toc_items.append("Network Communication Graph")
+        toc_items.append("IP Network Communication Graph")
+    if 'mac_network' in options and 'mac_graph' in stats:
+        toc_items.append("MAC Address Communication Graph")
     if 'top_ips' in options and stats['top_ips']:
         toc_items.append("Most Common IP Addresses")
     
@@ -472,6 +715,28 @@ def generate_pdf_report(filename, data, stats, options):
         img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
         elements.append(img)
         elements.append(Spacer(1, 0.3*inch))
+    
+    # Dla wykresów adresów MAC:
+    if 'mac_addresses' in options and stats['top_mac_addresses']:
+        elements.append(Paragraph("Most Used MAC Addresses", subtitle_style))
+        
+        # Generowanie wykresu adresów MAC z lepszą jakością
+        chart_img = generate_chart_image('bar', stats['top_mac_data'], 'Most Used MAC Addresses', width=600, height=450)
+        img = Image(chart_img, width=450, height=300)
+        img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
+        elements.append(img)
+        elements.append(Spacer(1, 0.3*inch))
+    
+    # Dla wykresów producentów MAC:
+    if 'mac_vendors' in options and stats['top_mac_vendors']:
+        elements.append(Paragraph("MAC Vendors Distribution", subtitle_style))
+        
+        # Generowanie wykresu producentów MAC z lepszą jakością
+        chart_img = generate_chart_image('pie', stats['top_mac_vendors'], 'MAC Vendors Distribution', width=600, height=450)
+        img = Image(chart_img, width=450, height=300)
+        img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
+        elements.append(img)
+        elements.append(Spacer(1, 0.3*inch))
 
     # Dla rozkładu czasowego:
     if 'time' in options and 'time_distribution' in stats:
@@ -495,12 +760,23 @@ def generate_pdf_report(filename, data, stats, options):
         elements.append(img)
         elements.append(Spacer(1, 0.3*inch))
 
-    # Dla grafu komunikacji:
+    # Dla grafu komunikacji IP:
     if 'network' in options and 'network_graph' in stats:
-        elements.append(Paragraph("Network Communication Graph", subtitle_style))
+        elements.append(Paragraph("IP Network Communication Graph", subtitle_style))
         
         # Generowanie grafu sieci z lepszą jakością
-        chart_img = generate_chart_image('network', stats['network_graph'], 'Communication Graph', width=800, height=600)
+        chart_img = generate_chart_image('network', stats['network_graph'], 'IP Communication Graph', width=800, height=600)
+        img = Image(chart_img, width=550, height=450)
+        img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
+        elements.append(img)
+        elements.append(Spacer(1, 0.3*inch))
+    
+    # Dla grafu komunikacji MAC:
+    if 'mac_network' in options and 'mac_graph' in stats:
+        elements.append(Paragraph("MAC Address Communication Graph", subtitle_style))
+        
+        # Generowanie grafu sieci MAC z lepszą jakością
+        chart_img = generate_chart_image('mac_network', stats['mac_graph'], 'MAC Communication Graph', width=800, height=600)
         img = Image(chart_img, width=550, height=450)
         img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
         elements.append(img)
@@ -527,6 +803,30 @@ def generate_pdf_report(filename, data, stats, options):
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ]))
         elements.append(ip_table)
+        elements.append(Spacer(1, 0.2*inch))
+    
+    # Najczęściej występujące adresy MAC (jeśli wybrane)
+    if 'mac_addresses' in options and stats['top_mac_addresses']:
+        elements.append(Paragraph("Most Common MAC Addresses", subtitle_style))
+        
+        # Tworzenie tabeli z adresami MAC
+        mac_data = [["MAC Address", "Vendor", "Number of Packets"]]
+        for mac, count in stats['top_mac_addresses'].items():
+            vendor = get_mac_vendor(mac)
+            mac_data.append([mac, vendor, str(count)])
+        
+        mac_table = Table(mac_data, colWidths=[200, 150, 100])
+        mac_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ]))
+        elements.append(mac_table)
         elements.append(Spacer(1, 0.2*inch))
     
     # Dodaj prostą stopkę z numerem strony
@@ -621,7 +921,7 @@ def generate_filtered_packets_report(filename, packets, filter_params):
     elements.append(Paragraph("Packets Table", subtitle_style))
     
     # Nagłówki kolumn
-    headers = ["#", "Time", "Source IP", "Destination IP", "Protocol", "Ports", "Length"]
+    headers = ["#", "Time", "Source MAC", "Destination MAC", "MAC Vendor", "Source IP", "Destination IP", "Protocol", "Ports", "Length"]
     packet_data = [headers]
     
     # Wypełnianie danymi pakietów
@@ -629,6 +929,9 @@ def generate_filtered_packets_report(filename, packets, filter_params):
         row = [
             str(packet.get('packet_number', '')),
             packet.get('time', ''),
+            packet.get('ethernet', {}).get('src', ''),
+            packet.get('ethernet', {}).get('dst', ''),
+            packet.get('ethernet', {}).get('src_vendor', ''),
             packet.get('ip', {}).get('src', ''),
             packet.get('ip', {}).get('dst', ''),
             get_protocol_name(packet),
@@ -638,7 +941,7 @@ def generate_filtered_packets_report(filename, packets, filter_params):
         packet_data.append(row)
     
     # Tworzenie tabeli pakietów
-    col_widths = [30, 130, 100, 100, 60, 80, 50]
+    col_widths = [25, 110, 100, 100, 80, 80, 80, 50, 70, 40]
     packets_table = Table(packet_data, colWidths=col_widths, repeatRows=1)
     packets_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
@@ -650,7 +953,7 @@ def generate_filtered_packets_report(filename, packets, filter_params):
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Numer pakietu wyśrodkowany
-        ('ALIGN', (6, 1), (6, -1), 'RIGHT'),   # Długość wyrównana do prawej
+        ('ALIGN', (9, 1), (9, -1), 'RIGHT'),   # Długość wyrównana do prawej
     ]))
     
     elements.append(packets_table)
@@ -671,7 +974,7 @@ def generate_filtered_packets_report(filename, packets, filter_params):
     
     return report_filename
 
-# Funkcje pomocnicze do formatowania danych pakietów
+    # Funkcje pomocnicze do formatowania danych pakietów
 def get_protocol_name(packet):
     """Zwraca nazwę protokołu pakietu"""
     if 'tcp' in packet:
@@ -691,6 +994,7 @@ def get_ports_str(packet):
         return f"{packet['udp']['sport']} → {packet['udp']['dport']}"
     else:
         return "-"
+    
 # Strona główna
 @app.route('/')
 def index():
@@ -778,7 +1082,7 @@ def view_json(filename):
         flash(f'Błąd podczas odczytu pliku: {str(e)}')
         return redirect(url_for('index'))
 
-# Pobieranie pliku JSON
+    # Pobieranie pliku JSON
 @app.route('/download/<filename>')
 def download_file(filename):
     return send_from_directory(app.config['JSON_FOLDER'], filename, as_attachment=True)
@@ -817,6 +1121,8 @@ def generate_filtered_report(filename):
         filter_params = {
             'Source IP': request.json.get('srcIp', ''),
             'Destination IP': request.json.get('dstIp', ''),
+            'Source MAC': request.json.get('srcMac', ''),
+            'Destination MAC': request.json.get('dstMac', ''),
             'Protocol': request.json.get('protocol', ''),
             'Port': request.json.get('port', ''),
             'Min Length': request.json.get('lengthMin', ''),
@@ -858,6 +1164,8 @@ def filter_packets(packets, filter_params):
     
     srcIp = filter_params.get('Source IP', '')
     dstIp = filter_params.get('Destination IP', '')
+    srcMac = filter_params.get('Source MAC', '')
+    dstMac = filter_params.get('Destination MAC', '')
     protocol = filter_params.get('Protocol', '')
     port = filter_params.get('Port', '')
     lengthMin = filter_params.get('Min Length', '')
@@ -868,6 +1176,16 @@ def filter_packets(packets, filter_params):
     for packet in packets:
         # Inicjalizacja wartości ważne dla filtrów
         valid = True
+        
+        # MAC Źródłowe
+        if srcMac and 'ethernet' in packet and packet['ethernet']['src'] != srcMac:
+            if not srcMac.lower() in packet['ethernet']['src'].lower():  # Częściowe dopasowanie
+                valid = False
+        
+        # MAC Docelowe
+        if dstMac and 'ethernet' in packet and packet['ethernet']['dst'] != dstMac:
+            if not dstMac.lower() in packet['ethernet']['dst'].lower():  # Częściowe dopasowanie
+                valid = False
         
         # IP Źródłowe
         if srcIp and 'ip' in packet and packet['ip']['src'] != srcIp:
@@ -937,57 +1255,57 @@ def filter_packets(packets, filter_params):
 # Generowanie raportu PDF
 @app.route('/generate_report/<filename>')
 def generate_report(filename):
-    try:
-        file_path = os.path.join(app.config['JSON_FOLDER'], filename)
-        
-        if not os.path.exists(file_path):
-            flash('Plik nie istnieje')
-            return redirect(url_for('index'))
-        
-        # Pobierz opcje raportu z parametrów URL
-        options = request.args.getlist('options[]')
-        
-        if not options:
-            options = ['summary', 'protocols', 'ports', 'time', 'packet_size', 'network', 'top_ips']
-        
-        # Wczytaj dane
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        # Generowanie rozszerzonych statystyk
-        stats = generate_extended_stats(data)
-        
-        # Generowanie raportu PDF
-        report_filename = generate_pdf_report(filename, data, stats, options)
-        
-        # Przekierowanie do pobrania wygenerowanego pliku PDF
-        return redirect(url_for('download_report', filename=report_filename))
-    
-    except Exception as e:
-        flash(f'Błąd podczas generowania raportu: {str(e)}')
-        return redirect(url_for('view_json', filename=filename))
+   try:
+       file_path = os.path.join(app.config['JSON_FOLDER'], filename)
+       
+       if not os.path.exists(file_path):
+           flash('Plik nie istnieje')
+           return redirect(url_for('index'))
+       
+       # Pobierz opcje raportu z parametrów URL
+       options = request.args.getlist('options[]')
+       
+       if not options:
+           options = ['summary', 'protocols', 'ports', 'mac_addresses', 'mac_vendors', 'time', 'packet_size', 'network', 'mac_network', 'top_ips']
+       
+       # Wczytaj dane
+       with open(file_path, 'r', encoding='utf-8') as f:
+           data = json.load(f)
+       
+       # Generowanie rozszerzonych statystyk
+       stats = generate_extended_stats(data)
+       
+       # Generowanie raportu PDF
+       report_filename = generate_pdf_report(filename, data, stats, options)
+       
+       # Przekierowanie do pobrania wygenerowanego pliku PDF
+       return redirect(url_for('download_report', filename=report_filename))
+   
+   except Exception as e:
+       flash(f'Błąd podczas generowania raportu: {str(e)}')
+       return redirect(url_for('view_json', filename=filename))
 
 # Pobieranie wygenerowanego raportu PDF
 @app.route('/download_report/<filename>')
 def download_report(filename):
-    # Ustawienie nagłówka Content-Disposition, aby przeglądarka zapisała plik
-    response = make_response(send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True))
-    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return response
+   # Ustawienie nagłówka Content-Disposition, aby przeglądarka zapisała plik
+   response = make_response(send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True))
+   response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+   return response
 
 # Ścieżka do plików statycznych JavaScript i CSS
 @app.route('/static/<path:path>')
 def send_static(path):
-    return send_from_directory('static', path)
+   return send_from_directory('static', path)
 
 # Obsługa błędów
 @app.errorhandler(404)
 def page_not_found(e):
-    return render_template('404.html'), 404
+   return render_template('404.html'), 404
 
 @app.errorhandler(500)
 def internal_server_error(e):
-    return render_template('500.html'), 500
+   return render_template('500.html'), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+   app.run(debug=True)
