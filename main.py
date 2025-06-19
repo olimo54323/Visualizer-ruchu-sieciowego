@@ -1619,50 +1619,6 @@ def get_json_data(filename):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Endpoint do generowania raportów z filtrowanych pakietów
-@app.route('/generate_filtered_report/<filename>', methods=['POST'])
-def generate_filtered_report(filename):
-    try:
-        file_path = os.path.join(app.config['JSON_FOLDER'], filename)
-        
-        if not os.path.exists(file_path):
-            return jsonify({'error': 'File not found'}), 404
-        
-        # Pobierz dane JSON
-        with open(file_path, 'r', encoding='utf-8') as f:
-            all_packets = json.load(f)
-        
-        # Pobierz parametry filtrowania z zapytania POST
-        filter_params = {
-            'Source IP': request.json.get('srcIp', ''),
-            'Destination IP': request.json.get('dstIp', ''),
-            'Source MAC': request.json.get('srcMac', ''),
-            'Destination MAC': request.json.get('dstMac', ''),
-            'Protocol': request.json.get('protocol', ''),
-            'Port': request.json.get('port', ''),
-            'Min Length': request.json.get('lengthMin', ''),
-            'Max Length': request.json.get('lengthMax', ''),
-            'Start Time': request.json.get('timeStart', ''),
-            'End Time': request.json.get('timeEnd', '')
-        }
-        
-        # Filtrowanie pakietów według parametrów
-        filtered_packets = filter_packets(all_packets, filter_params)
-        
-        # Generowanie raportu
-        report_filename = generate_filtered_packets_report(filename, filtered_packets, filter_params)
-        
-        # Zwracanie ścieżki do wygenerowanego raportu
-        return jsonify({
-            'success': True,
-            'message': 'Report generated successfully',
-            'report_url': url_for('download_report', filename=report_filename)
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error generating filtered report: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
 # Funkcja do filtrowania pakietów
 def filter_packets(packets, filter_params):
     """
@@ -1851,6 +1807,123 @@ def export_csv(filename):
     except Exception as e:
         flash(f'Błąd podczas eksportu CSV: {str(e)}')
         return redirect(url_for('view_json', filename=filename))
+    
+@app.route('/generate_filtered_report/<filename>', methods=['POST'])
+def generate_filtered_report(filename):
+    try:
+        file_path = os.path.join(app.config['JSON_FOLDER'], filename)
+        
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Pobierz dane JSON
+        with open(file_path, 'r', encoding='utf-8') as f:
+            all_packets = json.load(f)
+        
+        # Pobierz parametry filtrowania z zapytania POST
+        filter_params = {
+            'Source IP': request.json.get('srcIp', ''),
+            'Destination IP': request.json.get('dstIp', ''),
+            'Source MAC': request.json.get('srcMac', ''),
+            'Destination MAC': request.json.get('dstMac', ''),
+            'Protocol': request.json.get('protocol', ''),
+            'Port': request.json.get('port', ''),
+            'Min Length': request.json.get('lengthMin', ''),
+            'Max Length': request.json.get('lengthMax', ''),
+            'Start Time': request.json.get('timeStart', ''),
+            'End Time': request.json.get('timeEnd', '')
+        }
+        
+        # Filtrowanie pakietów według parametrów
+        filtered_packets = filter_packets(all_packets, filter_params)
+        
+        # Generowanie raportu
+        report_filename = generate_filtered_packets_report(filename, filtered_packets, filter_params)
+        
+        # Zwracanie ścieżki do wygenerowanego raportu
+        return jsonify({
+            'success': True,
+            'message': 'Report generated successfully',
+            'report_url': url_for('download_report', filename=report_filename)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error generating filtered report: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Endpoint do eksportu filtrowanych pakietów do CSV
+@app.route('/export_filtered_csv/<filename>', methods=['POST'])
+def export_filtered_csv(filename):
+    try:
+        file_path = os.path.join(app.config['JSON_FOLDER'], filename)
+        
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Pobierz dane JSON
+        with open(file_path, 'r', encoding='utf-8') as f:
+            all_packets = json.load(f)
+        
+        # Pobierz parametry filtrowania z zapytania POST
+        filter_params = {
+            'Source IP': request.json.get('srcIp', ''),
+            'Destination IP': request.json.get('dstIp', ''),
+            'Source MAC': request.json.get('srcMac', ''),
+            'Destination MAC': request.json.get('dstMac', ''),
+            'Protocol': request.json.get('protocol', ''),
+            'Port': request.json.get('port', ''),
+            'Min Length': request.json.get('lengthMin', ''),
+            'Max Length': request.json.get('lengthMax', ''),
+            'Start Time': request.json.get('timeStart', ''),
+            'End Time': request.json.get('timeEnd', '')
+        }
+        
+        # Filtrowanie pakietów według parametrów
+        filtered_packets = filter_packets(all_packets, filter_params)
+        
+        # Konwersja filtrowanych pakietów do DataFrame
+        df_data = []
+        for packet in filtered_packets:
+            row = {
+                'Packet_Number': packet.get('packet_number', ''),
+                'Time': packet.get('time', ''),
+                'Length': packet.get('length', ''),
+                'Source_MAC': packet.get('ethernet', {}).get('src', ''),
+                'Destination_MAC': packet.get('ethernet', {}).get('dst', ''),
+                'Source_MAC_Vendor': packet.get('ethernet', {}).get('src_vendor', ''),
+                'Destination_MAC_Vendor': packet.get('ethernet', {}).get('dst_vendor', ''),
+                'Source_IP': packet.get('ip', {}).get('src', ''),
+                'Destination_IP': packet.get('ip', {}).get('dst', ''),
+                'Protocol': 'TCP' if 'tcp' in packet else 'UDP' if 'udp' in packet else 'Other',
+                'Source_Port': packet.get('tcp', packet.get('udp', {})).get('sport', ''),
+                'Destination_Port': packet.get('tcp', packet.get('udp', {})).get('dport', ''),
+                'TTL': packet.get('ip', {}).get('ttl', ''),
+                'TCP_Flags': packet.get('tcp', {}).get('flags', '') if 'tcp' in packet else '',
+                'UDP_Length': packet.get('udp', {}).get('len', '') if 'udp' in packet else ''
+            }
+            df_data.append(row)
+        
+        df = pd.DataFrame(df_data)
+        
+        # Utworzenie pliku CSV
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_filename = os.path.splitext(os.path.basename(filename))[0]
+        csv_filename = f"filtered_packets_{base_filename}_{timestamp}.csv"
+        csv_path = os.path.join(app.config['UPLOAD_FOLDER'], csv_filename)
+        
+        df.to_csv(csv_path, index=False, encoding='utf-8')
+        
+        # Zwracanie informacji o wygenerowanym pliku
+        return jsonify({
+            'success': True,
+            'message': 'Filtered CSV exported successfully',
+            'csv_url': url_for('download_report', filename=csv_filename),
+            'total_packets': len(filtered_packets)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error exporting filtered CSV: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 # Ścieżka do plików statycznych JavaScript i CSS
 @app.route('/static/<path:path>')

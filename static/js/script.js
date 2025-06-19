@@ -1311,3 +1311,196 @@ function initFilteredReportGenerator() {
        });
    }
 }
+
+// Generator filtrowanych raportów
+function initFilteredReportGenerator() {
+   const filteredReportBtn = document.getElementById('generateFilteredReportBtn');
+   const filteredCSVBtn = document.getElementById('generateFilteredCSVBtn');
+   
+   if (filteredReportBtn) {
+       // Obsługa kliknięcia przycisku "Raport z filtrów"
+       filteredReportBtn.addEventListener('click', function() {
+           generateFilteredExport('report');
+       });
+   }
+   
+   if (filteredCSVBtn) {
+       // Obsługa kliknięcia przycisku "Filtrowany CSV"
+       filteredCSVBtn.addEventListener('click', function() {
+           generateFilteredExport('csv');
+       });
+   }
+   
+   // Wspólna funkcja do generowania eksportów
+   function generateFilteredExport(exportType) {
+       // Pobieranie wartości filtrów
+       const srcMac = document.getElementById('filter-src-mac').value;
+       const dstMac = document.getElementById('filter-dst-mac').value;
+       const srcIp = document.getElementById('filter-src-ip').value;
+       const dstIp = document.getElementById('filter-dst-ip').value;
+       const protocol = document.getElementById('filter-protocol').value;
+       const port = document.getElementById('filter-port').value;
+       const lengthMin = document.getElementById('filter-length-min').value;
+       const lengthMax = document.getElementById('filter-length-max').value;
+       const timeStart = document.getElementById('filter-time-start').value;
+       const timeEnd = document.getElementById('filter-time-end').value;
+       
+       // Przygotowanie danych do wysłania
+       const filterData = {
+           srcMac: srcMac,
+           dstMac: dstMac,
+           srcIp: srcIp,
+           dstIp: dstIp,
+           protocol: protocol,
+           port: port,
+           lengthMin: lengthMin,
+           lengthMax: lengthMax,
+           timeStart: timeStart,
+           timeEnd: timeEnd
+       };
+       
+       // Określenie przycisku i endpointu
+       let button, endpoint, loadingText, originalText;
+       
+       if (exportType === 'csv') {
+           button = filteredCSVBtn;
+           endpoint = `/export_filtered_csv/${filename}`;
+           loadingText = '<i class="fas fa-spinner fa-spin"></i> Eksportowanie CSV...';
+           originalText = '<i class="fas fa-file-csv"></i> Filtrowany CSV';
+       } else {
+           button = filteredReportBtn;
+           endpoint = `/generate_filtered_report/${filename}`;
+           loadingText = '<i class="fas fa-spinner fa-spin"></i> Generowanie raportu...';
+           originalText = '<i class="fas fa-file-pdf"></i> Raport z filtrów';
+       }
+       
+       // Wyświetlenie informacji o trwającym generowaniu
+       button.disabled = true;
+       button.innerHTML = loadingText;
+       
+       // Wysłanie żądania do serwera
+       fetch(endpoint, {
+           method: 'POST',
+           headers: {
+               'Content-Type': 'application/json',
+           },
+           body: JSON.stringify(filterData)
+       })
+       .then(response => {
+           if (!response.ok) {
+               throw new Error('Network response was not ok');
+           }
+           return response.json();
+       })
+       .then(data => {
+           // Przywrócenie przycisku
+           button.disabled = false;
+           button.innerHTML = originalText;
+           
+           if (data.success) {
+               // Przekierowanie do pobrania wygenerowanego pliku
+               if (exportType === 'csv') {
+                   window.location.href = data.csv_url;
+                   // Wyświetl informację o liczbie wyeksportowanych pakietów
+                   alert(`Wyeksportowano ${data.total_packets} pakietów do pliku CSV.`);
+               } else {
+                   window.location.href = data.report_url;
+               }
+           } else {
+               alert(`Błąd ${exportType === 'csv' ? 'eksportu CSV' : 'generowania raportu'}: ${data.error}`);
+           }
+       })
+       .catch(error => {
+           console.error('Error:', error);
+           // Przywrócenie przycisku
+           button.disabled = false;
+           button.innerHTML = originalText;
+           alert(`Wystąpił błąd podczas ${exportType === 'csv' ? 'eksportu CSV' : 'generowania raportu'}. Sprawdź konsolę przeglądarki.`);
+       });
+   }
+   
+   // Obsługa przycisku "Zastosuj filtry"
+   const applyFiltersBtn = document.getElementById('apply-filters');
+   if (applyFiltersBtn) {
+       applyFiltersBtn.addEventListener('click', function() {
+           // Tutaj można dodać kod do filtrowania tabeli bez generowania raportu PDF
+           // Na przykład filtrowanie w DataTables
+           
+           // Pobieranie wartości filtrów
+           const srcMac = document.getElementById('filter-src-mac').value.toLowerCase();
+           const dstMac = document.getElementById('filter-dst-mac').value.toLowerCase();
+           const srcIp = document.getElementById('filter-src-ip').value.toLowerCase();
+           const dstIp = document.getElementById('filter-dst-ip').value.toLowerCase();
+           const protocol = document.getElementById('filter-protocol').value;
+           const port = document.getElementById('filter-port').value;
+           const lengthMin = parseInt(document.getElementById('filter-length-min').value) || 0;
+           const lengthMax = parseInt(document.getElementById('filter-length-max').value) || Number.MAX_SAFE_INTEGER;
+           
+           // Zastosowanie niestandardowego filtra do DataTables
+           const dataTable = $('#packetsTable').DataTable();
+           
+           // Własny filtr wyszukiwania
+           $.fn.dataTable.ext.search.push(
+               function(settings, data, dataIndex) {
+                   // Indeksy kolumn w tabeli
+                   const srcMacIdx = 2; // MAC Źródłowe
+                   const dstMacIdx = 3; // MAC Docelowe
+                   const srcIdx = 5;    // Źródło IP
+                   const dstIdx = 6;    // Cel IP
+                   const protoIdx = 7;  // Protokół
+                   const portsIdx = 8;  // Porty
+                   const lengthIdx = 9; // Długość
+                   
+                   // Dane z wiersza
+                   const rowSrcMac = data[srcMacIdx].toLowerCase();
+                   const rowDstMac = data[dstMacIdx].toLowerCase();
+                   const rowSrc = data[srcIdx].toLowerCase();
+                   const rowDst = data[dstIdx].toLowerCase();
+                   const rowProto = data[protoIdx];
+                   const rowPorts = data[portsIdx];
+                   const rowLength = parseInt(data[lengthIdx]) || 0;
+                   
+                   // Sprawdzanie warunków filtrowania
+                   let match = true;
+                   
+                   if (srcMac && !rowSrcMac.includes(srcMac)) match = false;
+                   if (dstMac && !rowDstMac.includes(dstMac)) match = false;
+                   if (srcIp && !rowSrc.includes(srcIp)) match = false;
+                   if (dstIp && !rowDst.includes(dstIp)) match = false;
+                   if (protocol && rowProto !== protocol) match = false;
+                   if (port && !rowPorts.includes(port)) match = false;
+                   if (rowLength < lengthMin || rowLength > lengthMax) match = false;
+                   
+                   return match;
+               }
+           );
+           
+           // Przeładowanie tabeli z uwzględnieniem filtrów
+           dataTable.draw();
+           
+           // Usunięcie filtra po zastosowaniu
+           $.fn.dataTable.ext.search.pop();
+       });
+   }
+   
+   // Obsługa przycisku "Resetuj filtry"
+   const resetFiltersBtn = document.getElementById('reset-filters');
+   if (resetFiltersBtn) {
+       resetFiltersBtn.addEventListener('click', function() {
+           // Czyszczenie pól filtrów
+           document.getElementById('filter-src-mac').value = '';
+           document.getElementById('filter-dst-mac').value = '';
+           document.getElementById('filter-src-ip').value = '';
+           document.getElementById('filter-dst-ip').value = '';
+           document.getElementById('filter-protocol').value = '';
+           document.getElementById('filter-port').value = '';
+           document.getElementById('filter-length-min').value = '';
+           document.getElementById('filter-length-max').value = '';
+           document.getElementById('filter-time-start').value = '';
+           document.getElementById('filter-time-end').value = '';
+           
+           // Przywrócenie oryginalnej tabeli
+           $('#packetsTable').DataTable().search('').columns().search('').draw();
+       });
+   }
+}
