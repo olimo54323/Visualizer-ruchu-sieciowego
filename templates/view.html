@@ -84,6 +84,9 @@
                 <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab">Dashboard</button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="network-metrics-tab" data-bs-toggle="tab" data-bs-target="#network-metrics" type="button" role="tab">Wskaźniki Sieciowe</button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link" id="packets-tab" data-bs-toggle="tab" data-bs-target="#packets" type="button" role="tab">Pakiety</button>
             </li>
             <li class="nav-item" role="presentation">
@@ -217,6 +220,128 @@
                     </div>
                 </div>
             </div>
+
+            <div class="tab-pane fade" id="network-metrics" role="tabpanel">
+        <!-- Kluczowe metryki -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4><i class="fas fa-tachometer-alt me-2"></i>Kluczowe wskaźniki wydajności</h4>
+                    </div>
+                    <div class="card-body" id="networkMetricsDisplay">
+                        <!-- Wypełniane przez JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Wykresy payload i throughput -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card chart-container">
+                    <div class="card-header">
+                        <h4><i class="fas fa-database me-2"></i>Statystyki Payload</h4>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="payloadChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card chart-container">
+                    <div class="card-header">
+                        <h4><i class="fas fa-chart-line me-2"></i>Throughput w czasie</h4>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="throughputChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card chart-container">
+                    <div class="card-header">
+                        <h4><i class="fas fa-layer-group me-2"></i>Payload według protokołów</h4>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="protocolPayloadChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card chart-container">
+                    <div class="card-header">
+                        <h4><i class="fas fa-chart-pie me-2"></i>Efektywność sieci</h4>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="networkEfficiencyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Szczegółowe statystyki -->
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-info-circle me-2"></i>Szczegóły Payload</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tr>
+                                <th>Średni payload na pakiet:</th>
+                                <td id="avgPayloadValue">-- bajtów</td>
+                            </tr>
+                            <tr>
+                                <th>Maksymalny payload:</th>
+                                <td id="maxPayloadValue">-- bajtów</td>
+                            </tr>
+                            <tr>
+                                <th>Minimalny payload:</th>
+                                <td id="minPayloadValue">-- bajtów</td>
+                            </tr>
+                            <tr>
+                                <th>Całkowity payload:</th>
+                                <td id="totalPayloadValue">-- MB</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-network-wired me-2"></i>Obciążenie sieci</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tr>
+                                <th>Całkowity ruch:</th>
+                                <td id="totalTrafficValue">-- MB</td>
+                            </tr>
+                            <tr>
+                                <th>Overhead nagłówków:</th>
+                                <td id="headerOverheadValue">-- MB</td>
+                            </tr>
+                            <tr>
+                                <th>Efektywność payload:</th>
+                                <td id="payloadEfficiencyValue">--%</td>
+                            </tr>
+                            <tr>
+                                <th>Średni throughput:</th>
+                                <td id="avgThroughputValue">-- KB/s</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
             
             <!-- Pakiety -->
             <div class="tab-pane fade" id="packets" role="tabpanel">
@@ -345,49 +470,373 @@
             
             <!-- Analizy zaawansowane -->
             <div class="tab-pane fade" id="advanced" role="tabpanel">
-                <div class="row">
-                    <div class="col-md-12 mb-4">
-                        <div class="card">
-                            <div class="card-header">
-                                <h4>Graf komunikacji między adresami IP</h4>
+        <div class="row">
+            <div class="col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h4><i class="fas fa-project-diagram me-2"></i>Graf komunikacji między adresami IP</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="networkGraph"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h4><i class="fas fa-ethernet me-2"></i>Graf komunikacji MAC z protokołami</h4>
+                        <small class="text-muted">Kolory węzłów reprezentują dominujące protokoły</small>
+                    </div>
+                    <div class="card-body">
+                        <div id="enhancedMacGraph"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Dodatkowa sekcja z analizą protokołów dla MAC -->
+            <div class="col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h4><i class="fas fa-table me-2"></i>Analiza protokołów według MAC</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table id="macProtocolTable" class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Adres MAC</th>
+                                        <th>Producent</th>
+                                        <th>Dominujący protokół</th>
+                                        <th>TCP</th>
+                                        <th>UDP</th>
+                                        <th>Inne</th>
+                                        <th>Całkowite pakiety</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="macProtocolTableBody">
+                                    <!-- Wypełniane przez JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Dodaj na końcu, przed zamknięciem body, nowe dane JSON dla JavaScript -->
+<script id="payloadStatsData" type="application/json">{{ stats.payload_stats | tojson }}</script>
+<script id="throughputStatsData" type="application/json">{{ stats.throughput_stats | tojson }}</script>
+<script id="protocolPayloadData" type="application/json">{{ stats.protocol_payload | tojson }}</script>
+<script id="networkLoadData" type="application/json">{{ stats.network_load | tojson }}</script>
+<script id="enhancedMacGraphData" type="application/json">{{ stats.enhanced_mac_graph | tojson }}</script>
+<script id="macProtocolStatsData" type="application/json">{{ stats.mac_protocol_stats | tojson }}</script>
+
+<!-- Dodatkowy JavaScript do wypełniania tabel -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Wypełnij szczegółowe statystyki
+    try {
+        const payloadStats = JSON.parse(document.getElementById('payloadStatsData').textContent);
+        const throughputStats = JSON.parse(document.getElementById('throughputStatsData').textContent);
+        const networkLoad = JSON.parse(document.getElementById('networkLoadData').textContent);
+        const macProtocolStats = JSON.parse(document.getElementById('macProtocolStatsData').textContent);
+        
+        // Wypełnij payload details
+        document.getElementById('avgPayloadValue').textContent = payloadStats.avg_payload_per_packet.toFixed(2) + ' bajtów';
+        document.getElementById('maxPayloadValue').textContent = payloadStats.max_payload_size.toLocaleString() + ' bajtów';
+        document.getElementById('minPayloadValue').textContent = payloadStats.min_payload_size.toLocaleString() + ' bajtów';
+        document.getElementById('totalPayloadValue').textContent = (payloadStats.total_payload_bytes / 1024 / 1024).toFixed(2) + ' MB';
+        
+        // Wypełnij network load details
+        document.getElementById('totalTrafficValue').textContent = (networkLoad.total_bytes / 1024 / 1024).toFixed(2) + ' MB';
+        document.getElementById('headerOverheadValue').textContent = (networkLoad.header_overhead / 1024 / 1024).toFixed(2) + ' MB';
+        document.getElementById('payloadEfficiencyValue').textContent = networkLoad.payload_efficiency.toFixed(1) + '%';
+        document.getElementById('avgThroughputValue').textContent = (throughputStats.avg_throughput / 1024).toFixed(2) + ' KB/s';
+        
+        // Wypełnij tabelę MAC protocol
+        const tableBody = document.getElementById('macProtocolTableBody');
+        Object.entries(macProtocolStats).forEach(([mac, protocols]) => {
+            const totalPackets = Object.values(protocols).reduce((a, b) => a + b, 0);
+            const dominantProtocol = Object.keys(protocols).reduce((a, b) => protocols[a] > protocols[b] ? a : b);
+            
+            const row = tableBody.insertRow();
+            row.innerHTML = `
+                <td><code>${mac}</code></td>
+                <td>${getMacVendor(mac)}</td>
+                <td><span class="badge bg-primary">${dominantProtocol}</span></td>
+                <td>${protocols.TCP || 0}</td>
+                <td>${protocols.UDP || 0}</td>
+                <td>${totalPackets - (protocols.TCP || 0) - (protocols.UDP || 0)}</td>
+                <td><strong>${totalPackets}</strong></td>
+            `;
+        });
+        
+        // Inicjalizuj DataTable dla MAC protocol table
+        $('#macProtocolTable').DataTable({
+            pageLength: 10,
+            order: [[6, 'desc']], // Sortuj po całkowitych pakietach
+            responsive: true
+        });
+        
+    } catch (error) {
+        console.error('Error populating statistics:', error);
+    }
+});
+
+// Funkcja pomocnicza do uzyskania vendora MAC (uproszczona)
+function getMacVendor(mac) {
+    // Tutaj można dodać mapowanie OUI -> vendor lub użyć API
+    // Na razie zwracamy Unknown
+    return 'Unknown';
+}
+</script>
+
+
+    <!-- Modal generowania raportu -->
+    <div class="modal fade" id="reportModal" tabindex="-1" aria-labelledby="reportModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form id="generateReportForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="reportModalLabel">
+                            <i class="fas fa-file-pdf me-2"></i>Generate PDF Report
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted mb-3">Select elements to include in the report:</p>
+                        
+                        <div class="accordion" id="reportOptionsAccordion">
+                            <!-- Podstawowe opcje -->
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="basicOptionsHeader">
+                                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#basicOptions" aria-expanded="true">
+                                        <i class="fas fa-chart-bar me-2"></i>Podstawowe analizy
+                                    </button>
+                                </h2>
+                                <div id="basicOptions" class="accordion-collapse collapse show" data-bs-parent="#reportOptionsAccordion">
+                                    <div class="accordion-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="summary" id="option-summary" checked>
+                                                    <label class="form-check-label" for="option-summary">
+                                                        <i class="fas fa-clipboard-list me-1"></i>Summary
+                                                    </label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="protocols" id="option-protocols" checked>
+                                                    <label class="form-check-label" for="option-protocols">
+                                                        <i class="fas fa-network-wired me-1"></i>Protocol chart
+                                                    </label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="ports" id="option-ports" checked>
+                                                    <label class="form-check-label" for="option-ports">
+                                                        <i class="fas fa-plug me-1"></i>Ports chart
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="mac_addresses" id="option-mac" checked>
+                                                    <label class="form-check-label" for="option-mac">
+                                                        <i class="fas fa-ethernet me-1"></i>MAC addresses chart
+                                                    </label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="mac_vendors" id="option-vendors" checked>
+                                                    <label class="form-check-label" for="option-vendors">
+                                                        <i class="fas fa-industry me-1"></i>MAC vendors chart
+                                                    </label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="top_ips" id="option-ips" checked>
+                                                    <label class="form-check-label" for="option-ips">
+                                                        <i class="fas fa-list-ol me-1"></i>Most common IP addresses
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="card-body">
-                                <div id="networkGraph"></div>
+                            
+                            <!-- NOWE OPCJE: Wskaźniki sieciowe -->
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="networkMetricsHeader">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#networkMetrics" aria-expanded="false">
+                                        <i class="fas fa-tachometer-alt me-2"></i>Wskaźniki sieciowe <span class="badge bg-success ms-2">NOWE</span>
+                                    </button>
+                                </h2>
+                                <div id="networkMetrics" class="accordion-collapse collapse" data-bs-parent="#reportOptionsAccordion">
+                                    <div class="accordion-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="payload_stats" id="option-payload-stats" checked>
+                                                    <label class="form-check-label" for="option-payload-stats">
+                                                        <i class="fas fa-database me-1"></i>Payload statistics
+                                                    </label>
+                                                    <small class="text-muted d-block">Analiza wielkości danych użytecznych</small>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="throughput_stats" id="option-throughput" checked>
+                                                    <label class="form-check-label" for="option-throughput">
+                                                        <i class="fas fa-chart-line me-1"></i>Throughput analysis
+                                                    </label>
+                                                    <small class="text-muted d-block">Przepustowość w czasie</small>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="network_efficiency" id="option-efficiency" checked>
+                                                    <label class="form-check-label" for="option-efficiency">
+                                                        <i class="fas fa-chart-pie me-1"></i>Network efficiency
+                                                    </label>
+                                                    <small class="text-muted d-block">Stosunek payload do overhead</small>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="protocol_payload" id="option-protocol-payload" checked>
+                                                    <label class="form-check-label" for="option-protocol-payload">
+                                                        <i class="fas fa-layer-group me-1"></i>Protocol payload analysis
+                                                    </label>
+                                                    <small class="text-muted d-block">Payload według protokołów</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Analizy czasowe i rozmiarowe -->
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="timeAnalysisHeader">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#timeAnalysis" aria-expanded="false">
+                                        <i class="fas fa-clock me-2"></i>Analizy czasowe i rozmiarowe
+                                    </button>
+                                </h2>
+                                <div id="timeAnalysis" class="accordion-collapse collapse" data-bs-parent="#reportOptionsAccordion">
+                                    <div class="accordion-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="time" id="option-time" checked>
+                                                    <label class="form-check-label" for="option-time">
+                                                        <i class="fas fa-chart-line me-1"></i>Time distribution
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="packet_size" id="option-size" checked>
+                                                    <label class="form-check-label" for="option-size">
+                                                        <i class="fas fa-ruler-combined me-1"></i>Packet size distribution
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Grafy sieciowe -->
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="networkGraphsHeader">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#networkGraphs" aria-expanded="false">
+                                        <i class="fas fa-project-diagram me-2"></i>Grafy komunikacji
+                                    </button>
+                                </h2>
+                                <div id="networkGraphs" class="accordion-collapse collapse" data-bs-parent="#reportOptionsAccordion">
+                                    <div class="accordion-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="network" id="option-network" checked>
+                                                    <label class="form-check-label" for="option-network">
+                                                        <i class="fas fa-sitemap me-1"></i>IP Communication graph
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="mac_network" id="option-mac-network" checked>
+                                                    <label class="form-check-label" for="option-mac-network">
+                                                        <i class="fas fa-ethernet me-1"></i>Enhanced MAC graph with protocols
+                                                    </label>
+                                                    <small class="text-muted d-block">Graf MAC z informacjami o protokołach</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="col-md-12 mb-4">
-                        <div class="card">
-                            <div class="card-header">
-                                <h4>Graf komunikacji między adresami MAC</h4>
-                            </div>
-                            <div class="card-body">
-                                <div id="macGraph"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Modal szczegółów pakietu -->
-        <div class="modal fade" id="packetModal" tabindex="-1" aria-labelledby="packetModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="packetModalLabel">Szczegóły pakietu</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body" id="packetModalBody">
-                        <!-- Zawartość zostanie wypełniona przez JavaScript -->
-                    </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+                        <div class="btn-group me-auto" role="group">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="selectAllBtn">
+                                <i class="fas fa-check-double"></i> Select All
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="deselectAllBtn">
+                                <i class="fas fa-times"></i> Deselect All
+                            </button>
+                            <button type="button" class="btn btn-outline-info btn-sm" id="selectRecommendedBtn">
+                                <i class="fas fa-star"></i> Recommended
+                            </button>
+                        </div>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-file-pdf"></i> Generate Report
+                        </button>
                     </div>
-                </div>
+                </form>
             </div>
         </div>
+    </div>
+
+    <!-- Dodaj dodatkowy JavaScript dla nowych przycisków -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Przycisk "Recommended" - wybiera najważniejsze opcje
+        document.getElementById('selectRecommendedBtn')?.addEventListener('click', function() {
+            // Odznacz wszystkie
+            document.querySelectorAll('#reportOptionsAccordion input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            
+            // Zaznacz rekomendowane
+            const recommended = [
+                'summary', 'protocols', 'payload_stats', 'throughput_stats', 
+                'network_efficiency', 'mac_network', 'time', 'top_ips'
+            ];
+            
+            recommended.forEach(optionId => {
+                const checkbox = document.getElementById(`option-${optionId}`);
+                if (checkbox) checkbox.checked = true;
+            });
+        });
+        
+        // Rozszerz istniejące funkcje przycisków
+        document.getElementById('selectAllBtn')?.addEventListener('click', function() {
+            document.querySelectorAll('#reportOptionsAccordion input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = true;
+            });
+        });
+        
+        document.getElementById('deselectAllBtn')?.addEventListener('click', function() {
+            document.querySelectorAll('#reportOptionsAccordion input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+        });
+    });
+    </script>
         
         <!-- Modal generowania raportu -->
         <div class="modal fade" id="reportModal" tabindex="-1" aria-labelledby="reportModalLabel" aria-hidden="true">

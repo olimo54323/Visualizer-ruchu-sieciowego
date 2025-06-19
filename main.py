@@ -464,6 +464,88 @@ def generate_extended_stats(data):
     # Dodanie danych geolokalizacyjnych (puste, do rozszerzenia)
     stats['geo_data'] = geo_data
     
+    network_metrics = calculate_network_metrics(data)
+    stats.update(network_metrics)
+    
+    # Ulepszone dane dla grafu MAC z protokołami
+    enhanced_mac_graph = {
+        'nodes': [],
+        'edges': []
+    }
+    
+    # Przepisanie węzłów MAC z informacjami o protokołach
+    for mac, protocol_stats in network_metrics['mac_protocol_stats'].items():
+        # Znajdź dominujący protokół dla tego MAC
+        dominant_protocol = max(protocol_stats, key=protocol_stats.get) if protocol_stats else 'Unknown'
+        total_packets = sum(protocol_stats.values()) if protocol_stats else 0
+        
+        # Określ kolor na podstawie dominującego protokołu
+        color_map = {
+            'TCP': '#FF6B6B',
+            'UDP': '#4ECDC4', 
+            'ICMP': '#45B7D1',
+            'ARP': '#96CEB4',
+            'DNS': '#FECA57',
+            'HTTP': '#FF9FF3',
+            'HTTPS': '#54A0FF',
+            'Unknown': '#DDA0DD'
+        }
+        
+        node_color = color_map.get(dominant_protocol, '#DDA0DD')
+        
+        enhanced_mac_graph['nodes'].append({
+            'id': mac,
+            'label': mac[-8:],  # Pokazuj tylko ostatnie 8 znaków
+            'title': f"MAC: {mac}\nVendor: {get_mac_vendor(mac)}\nDominant Protocol: {dominant_protocol}\nTotal Packets: {total_packets}",
+            'value': total_packets,
+            'color': node_color,
+            'protocol': dominant_protocol,
+            'protocol_stats': protocol_stats
+        })
+    
+    # Dodaj krawędzie MAC (zachowaj istniejącą logikę)
+    for packet in data:
+        if 'ethernet' in packet:
+            src_mac = packet['ethernet']['src']
+            dst_mac = packet['ethernet']['dst']
+            
+            edge_id = f"{src_mac}-{dst_mac}"
+            existing_edge = next((e for e in enhanced_mac_graph['edges'] if e.get('id') == edge_id), None)
+            
+            # Określ protokół dla krawędzi
+            if 'tcp' in packet:
+                edge_protocol = 'TCP'
+            elif 'udp' in packet:
+                edge_protocol = 'UDP'
+            elif 'ip' in packet:
+                edge_protocol = f"IP({packet['ip']['proto']})"
+            else:
+                edge_protocol = 'Other'
+            
+            if existing_edge:
+                existing_edge['value'] += 1
+                existing_edge['title'] = f"Packets: {existing_edge['value']}\nProtocols: {edge_protocol}"
+                # Dodaj protokół do listy
+                if 'protocols' not in existing_edge:
+                    existing_edge['protocols'] = set()
+                existing_edge['protocols'].add(edge_protocol)
+            else:
+                enhanced_mac_graph['edges'].append({
+                    'id': edge_id,
+                    'from': src_mac,
+                    'to': dst_mac,
+                    'value': 1,
+                    'title': f'Packets: 1\nProtocol: {edge_protocol}',
+                    'protocols': {edge_protocol}
+                })
+    
+    # Konwertuj sets na listy dla JSON
+    for edge in enhanced_mac_graph['edges']:
+        if 'protocols' in edge:
+            edge['protocols'] = list(edge['protocols'])
+    
+    stats['enhanced_mac_graph'] = enhanced_mac_graph
+    
     return stats
 
 # Funkcja generująca obrazy dla raportu PDF z poprawioną jakością
@@ -494,6 +576,80 @@ def generate_chart_image(chart_type, data, title, width=800, height=400):
         # Dostosowanie wielkości etykiet
         plt.tick_params(axis='both', which='major', labelsize=10)
     
+    elif chart_type == 'enhanced_mac_network':
+        # Graf komunikacji między adresami MAC z protokołami
+        G = nx.DiGraph()
+        
+        # Dodawanie węzłów z kolorami protokołów
+        for node in data['nodes']:
+            G.add_node(node['id'], 
+                      weight=node.get('value', 1), 
+                      protocol=node.get('protocol', 'Unknown'),
+                      color=node.get('color', '#DDA0DD'))
+        
+        # Dodawanie krawędzi
+        for edge in data['edges']:
+            G.add_edge(edge['from'], edge['to'], weight=edge.get('value', 1))
+        
+        # Layout
+        pos = nx.spring_layout(G, seed=42, k=3, iterations=50)
+        
+        # Przygotowanie kolorów węzłów
+        node_colors = []
+        node_sizes = []
+        for node in G.nodes():
+            node_data = next((n for n in data['nodes'] if n['id'] == node), {})
+            node_colors.append(node_data.get('color', '#DDA0DD'))
+            node_sizes.append(max(100, min(1000, node_data.get('value', 1) * 50)))
+        
+        # Rysowanie węzłów
+        nx.draw_networkx_nodes(G, pos, node_size=node_sizes, 
+                               node_color=node_colors, alpha=0.8, 
+                               edgecolors='black', linewidths=1)
+        
+        # Rysowanie krawędzi
+        edge_weights = [max(1, min(5, G.edges[edge].get('weight', 1))) for edge in G.edges()]
+        nx.draw_networkx_edges(G, pos, width=edge_weights, alpha=0.6, 
+                              arrows=True, arrowstyle='->', arrowsize=15,
+                              edge_color='gray')
+        
+        # Etykiety węzłów (skrócone adresy MAC)
+        short_labels = {node: node[-8:] for node in G.nodes()}
+        nx.draw_networkx_labels(G, pos, labels=short_labels, font_size=8, 
+                              font_weight='bold',
+                              bbox=dict(facecolor='white', alpha=0.7, 
+                                       edgecolor='none', pad=1))
+        
+        # Dodaj legendę protokołów
+        protocol_colors = {
+            'TCP': '#FF6B6B',
+            'UDP': '#4ECDC4',
+            'ICMP': '#45B7D1',
+            'ARP': '#96CEB4',
+            'DNS': '#FECA57',
+            'HTTP': '#FF9FF3',
+            'HTTPS': '#54A0FF',
+            'Unknown': '#DDA0DD'
+        }
+        
+        # Tworzenie legendy
+        legend_elements = []
+        protocols_in_data = set()
+        for node in data['nodes']:
+            protocols_in_data.add(node.get('protocol', 'Unknown'))
+        
+        for protocol in protocols_in_data:
+            if protocol in protocol_colors:
+                legend_elements.append(
+                    plt.Line2D([0], [0], marker='o', color='w', 
+                              markerfacecolor=protocol_colors[protocol],
+                              markersize=10, label=protocol)
+                )
+        
+        if legend_elements and len(legend_elements) <= 8:
+            plt.legend(handles=legend_elements, loc='upper left', 
+                      bbox_to_anchor=(1.05, 1), fontsize=10)
+
     elif chart_type == 'line':
         # Wykres liniowy (np. dla rozkładu czasowego)
         plt.plot(data['labels'], data['values'], linewidth=2)
@@ -609,6 +765,182 @@ def generate_chart_image(chart_type, data, title, width=800, height=400):
     
     return img_data
 
+def calculate_network_metrics(data):
+    """Oblicza zaawansowane wskaźniki sieciowe"""
+    
+    metrics = {
+        'payload_stats': {
+            'total_payload_bytes': 0,
+            'avg_payload_per_packet': 0,
+            'max_payload_size': 0,
+            'min_payload_size': float('inf'),
+            'payload_distribution': {}
+        },
+        'throughput_stats': {
+            'packets_per_second': [],
+            'bytes_per_second': [],
+            'peak_throughput': 0,
+            'avg_throughput': 0,
+            'time_labels': []
+        },
+        'protocol_payload': {},  # Payload per protocol
+        'mac_protocol_stats': {},  # Protocol distribution per MAC
+        'network_load': {
+            'total_bytes': 0,
+            'header_overhead': 0,
+            'payload_efficiency': 0
+        }
+    }
+    
+    # Organizacja danych czasowych
+    time_buckets = {}
+    all_times = []
+    
+    # Zbieranie danych podstawowych
+    for packet in data:
+        packet_time = None
+        try:
+            packet_time = datetime.datetime.fromisoformat(packet['time'])
+            all_times.append(packet_time)
+        except:
+            continue
+            
+        packet_length = packet.get('length', 0)
+        metrics['network_load']['total_bytes'] += packet_length
+        
+        # Obliczanie payload
+        payload_size = 0
+        header_size = packet_length
+        
+        # Szacowanie wielkości nagłówków i payload
+        if 'ethernet' in packet:
+            header_size = 14  # Ethernet header
+            
+        if 'ip' in packet:
+            header_size += 20  # IP header (minimum)
+            
+        if 'tcp' in packet:
+            header_size += 20  # TCP header (minimum)
+            protocol = 'TCP'
+        elif 'udp' in packet:
+            header_size += 8   # UDP header
+            protocol = 'UDP'
+        elif 'ip' in packet:
+            protocol = f"IP({packet['ip']['proto']})"
+        else:
+            protocol = 'Other'
+            
+        payload_size = max(0, packet_length - header_size)
+        
+        # Aktualizacja statystyk payload
+        metrics['payload_stats']['total_payload_bytes'] += payload_size
+        metrics['network_load']['header_overhead'] += header_size
+        
+        if payload_size > 0:
+            metrics['payload_stats']['max_payload_size'] = max(
+                metrics['payload_stats']['max_payload_size'], payload_size
+            )
+            metrics['payload_stats']['min_payload_size'] = min(
+                metrics['payload_stats']['min_payload_size'], payload_size
+            )
+            
+        # Payload per protocol
+        if protocol not in metrics['protocol_payload']:
+            metrics['protocol_payload'][protocol] = {'total': 0, 'packets': 0}
+        metrics['protocol_payload'][protocol]['total'] += payload_size
+        metrics['protocol_payload'][protocol]['packets'] += 1
+        
+        # MAC protocol stats
+        if 'ethernet' in packet:
+            src_mac = packet['ethernet']['src']
+            dst_mac = packet['ethernet']['dst']
+            
+            for mac in [src_mac, dst_mac]:
+                if mac not in metrics['mac_protocol_stats']:
+                    metrics['mac_protocol_stats'][mac] = {}
+                if protocol not in metrics['mac_protocol_stats'][mac]:
+                    metrics['mac_protocol_stats'][mac][protocol] = 0
+                metrics['mac_protocol_stats'][mac][protocol] += 1
+                
+        # Grupowanie w buckety czasowe dla throughput
+        if packet_time:
+            time_key = packet_time.strftime('%Y-%m-%d %H:%M:%S')
+            if time_key not in time_buckets:
+                time_buckets[time_key] = {'packets': 0, 'bytes': 0}
+            time_buckets[time_key]['packets'] += 1
+            time_buckets[time_key]['bytes'] += packet_length
+    
+    # Finalizacja obliczeń
+    total_packets = len(data)
+    if total_packets > 0:
+        metrics['payload_stats']['avg_payload_per_packet'] = (
+            metrics['payload_stats']['total_payload_bytes'] / total_packets
+        )
+        
+    if metrics['payload_stats']['min_payload_size'] == float('inf'):
+        metrics['payload_stats']['min_payload_size'] = 0
+        
+    # Efektywność payload
+    if metrics['network_load']['total_bytes'] > 0:
+        metrics['network_load']['payload_efficiency'] = (
+            metrics['payload_stats']['total_payload_bytes'] / 
+            metrics['network_load']['total_bytes'] * 100
+        )
+    
+    # Przygotowanie danych throughput
+    if all_times and len(all_times) > 1:
+        min_time = min(all_times)
+        max_time = max(all_times)
+        duration = (max_time - min_time).total_seconds()
+        
+        if duration > 0:
+            # Średni throughput
+            metrics['throughput_stats']['avg_throughput'] = (
+                metrics['network_load']['total_bytes'] / duration
+            )
+            
+            # Utworzenie równomiernie rozłożonych bucketów czasowych
+            num_points = min(60, len(time_buckets))  # Max 60 punktów
+            if len(time_buckets) > 1:
+                interval = duration / num_points
+                
+                for i in range(num_points):
+                    bucket_time = min_time + datetime.timedelta(seconds=i * interval)
+                    time_label = bucket_time.strftime('%H:%M:%S')
+                    
+                    # Znajdź pakiety w tym przedziale
+                    bucket_bytes = 0
+                    bucket_packets = 0
+                    
+                    start_time = bucket_time
+                    end_time = bucket_time + datetime.timedelta(seconds=interval)
+                    
+                    for packet_time in all_times:
+                        if start_time <= packet_time < end_time:
+                            # Znajdź odpowiadający pakiet
+                            for packet in data:
+                                try:
+                                    if datetime.datetime.fromisoformat(packet['time']) == packet_time:
+                                        bucket_bytes += packet.get('length', 0)
+                                        bucket_packets += 1
+                                        break
+                                except:
+                                    continue
+                    
+                    throughput = bucket_bytes / interval if interval > 0 else 0
+                    
+                    metrics['throughput_stats']['time_labels'].append(time_label)
+                    metrics['throughput_stats']['bytes_per_second'].append(throughput)
+                    metrics['throughput_stats']['packets_per_second'].append(
+                        bucket_packets / interval if interval > 0 else 0
+                    )
+                    
+                    metrics['throughput_stats']['peak_throughput'] = max(
+                        metrics['throughput_stats']['peak_throughput'], throughput
+                    )
+    
+    return metrics
+
 # Funkcja do generowania raportu PDF (bez interaktywnych linków)
 def generate_pdf_report(filename, data, stats, options):
     # Utworzenie dokumentu PDF
@@ -657,14 +989,24 @@ def generate_pdf_report(filename, data, stats, options):
         toc_items.append("Most Used MAC Addresses")
     if 'mac_vendors' in options and stats['top_mac_vendors']:
         toc_items.append("MAC Vendors Distribution")
+    # NOWE OPCJE:
+    if 'payload_stats' in options and 'payload_stats' in stats:
+        toc_items.append("Payload Statistics")
+    if 'throughput_stats' in options and 'throughput_stats' in stats:
+        toc_items.append("Throughput Analysis")
+    if 'network_efficiency' in options and 'network_load' in stats:
+        toc_items.append("Network Efficiency")
+    if 'protocol_payload' in options and 'protocol_payload' in stats:
+        toc_items.append("Protocol Payload Analysis")
+    # Pozostałe istniejące opcje...
     if 'time' in options and 'time_distribution' in stats:
         toc_items.append("Time Distribution")
     if 'packet_size' in options and 'packet_size_distribution' in stats:
         toc_items.append("Packet Size Distribution")
     if 'network' in options and 'network_graph' in stats:
         toc_items.append("IP Network Communication Graph")
-    if 'mac_network' in options and 'mac_graph' in stats:
-        toc_items.append("MAC Address Communication Graph")
+    if 'mac_network' in options and 'enhanced_mac_graph' in stats:
+        toc_items.append("Enhanced MAC Communication Graph with Protocols")
     if 'top_ips' in options and stats['top_ips']:
         toc_items.append("Most Common IP Addresses")
     
@@ -681,19 +1023,156 @@ def generate_pdf_report(filename, data, stats, options):
             ["Total number of packets", str(stats['total_packets'])],
         ]
         
-        # Tworzenie tabeli podsumowania
-        summary_table = Table(summary_data, colWidths=[200, 200])
-        summary_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.black),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        # Dodaj wskaźniki payload/netload do podsumowania
+        if 'payload_stats' in stats:
+            payload_mb = stats['payload_stats']['total_payload_bytes'] / (1024 * 1024)
+            summary_data.append(["Total payload", f"{payload_mb:.2f} MB"])
+            summary_data.append(["Average payload per packet", f"{stats['payload_stats']['avg_payload_per_packet']:.2f} bytes"])
+        
+        if 'network_load' in stats:
+            total_mb = stats['network_load']['total_bytes'] / (1024 * 1024)
+            summary_data.append(["Total network traffic", f"{total_mb:.2f} MB"])
+            summary_data.append(["Network efficiency", f"{stats['network_load']['payload_efficiency']:.1f}%"])
+        
+        if 'throughput_stats' in stats:
+            avg_throughput_kbps = stats['throughput_stats']['avg_throughput'] / 1024
+            peak_throughput_kbps = stats['throughput_stats']['peak_throughput'] / 1024
+            summary_data.append(["Average throughput", f"{avg_throughput_kbps:.2f} KB/s"])
+            summary_data.append(["Peak throughput", f"{peak_throughput_kbps:.2f} KB/s"])
+
+        if 'payload_stats' in options and 'payload_stats' in stats:
+            elements.append(Paragraph("Payload Statistics", subtitle_style))
+        
+        payload_data = {
+            'Average Payload': stats['payload_stats']['avg_payload_per_packet'],
+            'Maximum Payload': stats['payload_stats']['max_payload_size'],
+            'Minimum Payload': stats['payload_stats']['min_payload_size']
+        }
+        
+        chart_img = generate_chart_image('bar', payload_data, 'Payload Statistics', width=600, height=450)
+        img = Image(chart_img, width=450, height=300)
+        img.hAlign = 'CENTER'
+        elements.append(img)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Dodaj tabelę ze szczegółami payload
+        payload_details = [
+            ["Metric", "Value"],
+            ["Total payload", f"{stats['payload_stats']['total_payload_bytes'] / (1024*1024):.2f} MB"],
+            ["Average payload per packet", f"{stats['payload_stats']['avg_payload_per_packet']:.2f} bytes"],
+            ["Maximum payload size", f"{stats['payload_stats']['max_payload_size']:,} bytes"],
+            ["Minimum payload size", f"{stats['payload_stats']['min_payload_size']:,} bytes"]
+        ]
+        
+        payload_table = Table(payload_details, colWidths=[200, 200])
+        payload_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ]))
-        elements.append(summary_table)
-        elements.append(Spacer(1, 0.2*inch))
+        elements.append(payload_table)
+        elements.append(Spacer(1, 0.3*inch))
+
+    if 'throughput_stats' in options and 'throughput_stats' in stats:
+        elements.append(Paragraph("Throughput Analysis", subtitle_style))
+        
+        chart_img = generate_chart_image('line', stats['throughput_stats'], 'Throughput Over Time', width=700, height=450)
+        img = Image(chart_img, width=500, height=300)
+        img.hAlign = 'CENTER'
+        elements.append(img)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Dodaj tabelę z metrykami throughput
+        throughput_details = [
+            ["Metric", "Value"],
+            ["Average throughput", f"{stats['throughput_stats']['avg_throughput'] / 1024:.2f} KB/s"],
+            ["Peak throughput", f"{stats['throughput_stats']['peak_throughput'] / 1024:.2f} KB/s"],
+        ]
+        
+        throughput_table = Table(throughput_details, colWidths=[200, 200])
+        throughput_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ]))
+        elements.append(throughput_table)
+        elements.append(Spacer(1, 0.3*inch))
+    
+    # Efektywność sieci
+    if 'network_efficiency' in options and 'network_load' in stats:
+        elements.append(Paragraph("Network Efficiency", subtitle_style))
+        
+        payload_bytes = stats['network_load']['total_bytes'] - stats['network_load']['header_overhead']
+        efficiency_data = {
+            'Payload (Useful Data)': payload_bytes,
+            'Headers (Overhead)': stats['network_load']['header_overhead']
+        }
+        
+        chart_img = generate_chart_image('pie', efficiency_data, 
+                                       f"Network Efficiency: {stats['network_load']['payload_efficiency']:.1f}%", 
+                                       width=600, height=450)
+        img = Image(chart_img, width=450, height=300)
+        img.hAlign = 'CENTER'
+        elements.append(img)
+        elements.append(Spacer(1, 0.3*inch))
+    
+    # Analiza Payload według protokołów
+    if 'protocol_payload' in options and 'protocol_payload' in stats:
+        elements.append(Paragraph("Protocol Payload Analysis", subtitle_style))
+        
+        # Przygotuj dane dla wykresu
+        protocol_payload_chart_data = []
+        for protocol, data in stats['protocol_payload'].items():
+            avg_payload = data['total'] / data['packets'] if data['packets'] > 0 else 0
+            protocol_payload_chart_data.append({
+                'protocol': protocol,
+                'total': data['total'],
+                'avg': avg_payload
+            })
+        
+        # Wykres słupkowy payload per protocol
+        protocol_totals = {item['protocol']: item['total'] for item in protocol_payload_chart_data}
+        chart_img = generate_chart_image('bar', protocol_totals, 'Total Payload by Protocol', width=600, height=450)
+        img = Image(chart_img, width=450, height=300)
+        img.hAlign = 'CENTER'
+        elements.append(img)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Tabela ze szczegółami
+        protocol_payload_details = [["Protocol", "Total Payload (bytes)", "Packets", "Avg Payload/Packet"]]
+        for protocol, data in stats['protocol_payload'].items():
+            avg_payload = data['total'] / data['packets'] if data['packets'] > 0 else 0
+            protocol_payload_details.append([
+                protocol,
+                f"{data['total']:,}",
+                str(data['packets']),
+                f"{avg_payload:.2f}"
+            ])
+        
+        protocol_payload_table = Table(protocol_payload_details, colWidths=[100, 120, 80, 120])
+        protocol_payload_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ]))
+        elements.append(protocol_payload_table)
+        elements.append(Spacer(1, 0.3*inch))
+
     
     if 'protocols' in options and stats['protocols']:
         elements.append(Paragraph("Protocol Distribution", subtitle_style))
@@ -772,15 +1251,51 @@ def generate_pdf_report(filename, data, stats, options):
         elements.append(Spacer(1, 0.3*inch))
     
     # Dla grafu komunikacji MAC:
-    if 'mac_network' in options and 'mac_graph' in stats:
-        elements.append(Paragraph("MAC Address Communication Graph", subtitle_style))
+    if 'mac_network' in options and 'enhanced_mac_graph' in stats:
+        elements.append(Paragraph("Enhanced MAC Communication Graph with Protocols", subtitle_style))
         
-        # Generowanie grafu sieci MAC z lepszą jakością
-        chart_img = generate_chart_image('mac_network', stats['mac_graph'], 'MAC Communication Graph', width=800, height=600)
+        chart_img = generate_chart_image('enhanced_mac_network', stats['enhanced_mac_graph'], 
+                                       'MAC Communication with Protocol Information', width=800, height=600)
         img = Image(chart_img, width=550, height=450)
-        img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
+        img.hAlign = 'CENTER'
         elements.append(img)
         elements.append(Spacer(1, 0.3*inch))
+        
+        # Dodaj tabelę z protokołami dla MAC
+        if 'mac_protocol_stats' in stats:
+            elements.append(Paragraph("MAC Address Protocol Distribution", subtitle_style))
+            
+            mac_protocol_data = [["MAC Address", "Vendor", "Dominant Protocol", "TCP", "UDP", "Other", "Total"]]
+            for mac, protocols in list(stats['mac_protocol_stats'].items())[:10]:  # Top 10
+                total_packets = sum(protocols.values())
+                dominant_protocol = max(protocols, key=protocols.get) if protocols else 'Unknown'
+                tcp_count = protocols.get('TCP', 0)
+                udp_count = protocols.get('UDP', 0)
+                other_count = total_packets - tcp_count - udp_count
+                
+                mac_protocol_data.append([
+                    mac,
+                    get_mac_vendor(mac),
+                    dominant_protocol,
+                    str(tcp_count),
+                    str(udp_count),
+                    str(other_count),
+                    str(total_packets)
+                ])
+            
+            mac_protocol_table = Table(mac_protocol_data, colWidths=[120, 80, 80, 40, 40, 40, 50])
+            mac_protocol_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+            elements.append(mac_protocol_table)
+            elements.append(Spacer(1, 0.3*inch))
     
     # Najczęściej występujące adresy IP (jeśli wybrane)
     if 'top_ips' in options and stats['top_ips']:

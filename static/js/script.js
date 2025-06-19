@@ -12,6 +12,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('generateReportBtn')) {
         initReportGenerator();
     }
+
+    if (document.getElementById('networkMetricsDisplay')) {
+        displayNetworkMetrics();
+    }
     
     // Inicjalizacja zaawansowanego podglądu pakietów
     initAdvancedPacketViewer();
@@ -88,6 +92,455 @@ function initCharts() {
    if (document.getElementById('geoMap')) {
        initGeoMap();
    }
+   if (document.getElementById('payloadChart')) {
+        initPayloadChart();
+    }
+    
+    if (document.getElementById('throughputChart')) {
+        initThroughputChart();
+    }
+    
+    if (document.getElementById('protocolPayloadChart')) {
+        initProtocolPayloadChart();
+    }
+    
+    if (document.getElementById('networkEfficiencyChart')) {
+        initNetworkEfficiencyChart();
+    }
+    
+    // Ulepszony graf MAC z protokołami
+    if (document.getElementById('enhancedMacGraph')) {
+        initEnhancedMacGraph();
+    }
+}
+
+function initPayloadChart() {
+    const payloadCtx = document.getElementById('payloadChart').getContext('2d');
+    const payloadData = JSON.parse(document.getElementById('payloadStatsData').textContent);
+    
+    const chartData = {
+        labels: ['Średni Payload', 'Max Payload', 'Min Payload'],
+        datasets: [{
+            label: 'Bajty',
+            data: [
+                payloadData.avg_payload_per_packet,
+                payloadData.max_payload_size,
+                payloadData.min_payload_size
+            ],
+            backgroundColor: [
+                'rgba(54, 162, 235, 0.7)',
+                'rgba(255, 99, 132, 0.7)',
+                'rgba(255, 206, 86, 0.7)'
+            ],
+            borderColor: [
+                'rgba(54, 162, 235, 1)',
+                'rgba(255, 99, 132, 1)',
+                'rgba(255, 206, 86, 1)'
+            ],
+            borderWidth: 1
+        }]
+    };
+    
+    new Chart(payloadCtx, {
+        type: 'bar',
+        data: chartData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Bajty'
+                    }
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Statystyki Payload'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y.toFixed(2)} bajtów`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Wykres throughput w czasie
+function initThroughputChart() {
+    const throughputCtx = document.getElementById('throughputChart').getContext('2d');
+    const throughputData = JSON.parse(document.getElementById('throughputStatsData').textContent);
+    
+    new Chart(throughputCtx, {
+        type: 'line',
+        data: {
+            labels: throughputData.time_labels,
+            datasets: [{
+                label: 'Bajty/sekunda',
+                data: throughputData.bytes_per_second,
+                borderColor: 'rgba(75, 192, 192, 1)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                borderWidth: 2,
+                tension: 0.1,
+                fill: true,
+                yAxisID: 'y'
+            }, {
+                label: 'Pakiety/sekunda',
+                data: throughputData.packets_per_second,
+                borderColor: 'rgba(255, 99, 132, 1)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                borderWidth: 2,
+                tension: 0.1,
+                fill: false,
+                yAxisID: 'y1'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Throughput w czasie'
+                },
+                legend: {
+                    display: true
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Czas'
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Bajty/sekunda'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Pakiety/sekunda'
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                }
+            }
+        }
+    });
+}
+
+// Wykres payload per protocol
+function initProtocolPayloadChart() {
+    const protocolPayloadCtx = document.getElementById('protocolPayloadChart').getContext('2d');
+    const protocolPayloadData = JSON.parse(document.getElementById('protocolPayloadData').textContent);
+    
+    const protocols = Object.keys(protocolPayloadData);
+    const payloadTotals = protocols.map(proto => protocolPayloadData[proto].total);
+    const avgPayloads = protocols.map(proto => 
+        protocolPayloadData[proto].packets > 0 ? 
+        protocolPayloadData[proto].total / protocolPayloadData[proto].packets : 0
+    );
+    
+    new Chart(protocolPayloadCtx, {
+        type: 'bar',
+        data: {
+            labels: protocols,
+            datasets: [{
+                label: 'Całkowity Payload (bajty)',
+                data: payloadTotals,
+                backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1,
+                yAxisID: 'y'
+            }, {
+                label: 'Średni Payload na pakiet (bajty)',
+                data: avgPayloads,
+                backgroundColor: 'rgba(255, 159, 64, 0.7)',
+                borderColor: 'rgba(255, 159, 64, 1)',
+                borderWidth: 1,
+                yAxisID: 'y1'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Payload według protokołów'
+                }
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Całkowity Payload (bajty)'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Średni Payload (bajty)'
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Wykres efektywności sieci
+function initNetworkEfficiencyChart() {
+    const efficiencyCtx = document.getElementById('networkEfficiencyChart').getContext('2d');
+    const networkLoadData = JSON.parse(document.getElementById('networkLoadData').textContent);
+    
+    const payloadBytes = networkLoadData.total_bytes - networkLoadData.header_overhead;
+    
+    new Chart(efficiencyCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Payload (Dane użyteczne)', 'Nagłówki (Overhead)'],
+            datasets: [{
+                data: [payloadBytes, networkLoadData.header_overhead],
+                backgroundColor: [
+                    'rgba(75, 192, 192, 0.7)',
+                    'rgba(255, 99, 132, 0.7)'
+                ],
+                borderColor: [
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(255, 99, 132, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: `Efektywność sieci: ${networkLoadData.payload_efficiency.toFixed(1)}%`
+                },
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((context.parsed * 100) / total).toFixed(1);
+                            return `${context.label}: ${context.parsed.toLocaleString()} bajtów (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Ulepszony graf komunikacji MAC z protokołami
+function initEnhancedMacGraph() {
+    const macContainer = document.getElementById('enhancedMacGraph');
+    const macData = JSON.parse(document.getElementById('enhancedMacGraphData').textContent);
+    
+    // Przygotowanie węzłów z kolorami protokołów
+    const nodes = new vis.DataSet(macData.nodes.map(node => ({
+        ...node,
+        color: {
+            background: node.color,
+            border: '#000000',
+            highlight: {
+                background: node.color,
+                border: '#ff0000'
+            }
+        },
+        font: {
+            color: '#000000',
+            size: 12
+        },
+        shape: 'dot',
+        size: Math.max(10, Math.min(50, node.value / 10))
+    })));
+    
+    const edges = new vis.DataSet(macData.edges.map(edge => ({
+        ...edge,
+        width: Math.max(1, Math.min(10, edge.value / 5)),
+        color: {
+            color: '#848484',
+            highlight: '#ff0000'
+        },
+        smooth: {
+            type: 'continuous'
+        }
+    })));
+    
+    const data = { nodes, edges };
+    const options = {
+        nodes: {
+            borderWidth: 2,
+            shadow: true
+        },
+        edges: {
+            arrows: {
+                to: { enabled: true, scaleFactor: 1 }
+            },
+            shadow: true
+        },
+        physics: {
+            enabled: true,
+            barnesHut: {
+                gravitationalConstant: -8000,
+                centralGravity: 0.3,
+                springLength: 95,
+                springConstant: 0.04,
+                damping: 0.09
+            },
+            stabilization: {
+                iterations: 100
+            }
+        },
+        interaction: {
+            hover: true,
+            tooltipDelay: 200,
+            selectConnectedEdges: false
+        }
+    };
+    
+    const network = new vis.Network(macContainer, data, options);
+    
+    // Dodanie legendy protokołów
+    const legendContainer = document.createElement('div');
+    legendContainer.style.cssText = `
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+        font-size: 12px;
+    `;
+    
+    const protocolColors = {
+        'TCP': '#FF6B6B',
+        'UDP': '#4ECDC4',
+        'ICMP': '#45B7D1',
+        'ARP': '#96CEB4',
+        'DNS': '#FECA57',
+        'HTTP': '#FF9FF3',
+        'HTTPS': '#54A0FF',
+        'Unknown': '#DDA0DD'
+    };
+    
+    let legendHTML = '<strong>Protokoły:</strong><br>';
+    Object.entries(protocolColors).forEach(([protocol, color]) => {
+        legendHTML += `<div style="margin: 2px 0;"><span style="display: inline-block; width: 12px; height: 12px; background: ${color}; margin-right: 5px; border-radius: 50%;"></span>${protocol}</div>`;
+    });
+    
+    legendContainer.innerHTML = legendHTML;
+    macContainer.style.position = 'relative';
+    macContainer.appendChild(legendContainer);
+    
+    // Event listener dla wyświetlania szczegółów węzła
+    network.on("selectNode", function (params) {
+        if (params.nodes.length > 0) {
+            const nodeId = params.nodes[0];
+            const nodeData = nodes.get(nodeId);
+            
+            if (nodeData && nodeData.protocol_stats) {
+                let protocolInfo = '<strong>Statystyki protokołów:</strong><br>';
+                Object.entries(nodeData.protocol_stats).forEach(([protocol, count]) => {
+                    protocolInfo += `${protocol}: ${count} pakietów<br>`;
+                });
+                
+                // Można tu dodać modal lub tooltip z dodatkowymi informacjami
+                console.log('Node details:', protocolInfo);
+            }
+        }
+    });
+}
+
+// Dodaj funkcję do wyświetlania metryk w interface
+function displayNetworkMetrics() {
+    // Funkcja może być wywołana do wyświetlenia podsumowania metryk
+    try {
+        const payloadStats = JSON.parse(document.getElementById('payloadStatsData').textContent);
+        const throughputStats = JSON.parse(document.getElementById('throughputStatsData').textContent);
+        const networkLoad = JSON.parse(document.getElementById('networkLoadData').textContent);
+        
+        const metricsContainer = document.getElementById('networkMetricsDisplay');
+        if (metricsContainer) {
+            metricsContainer.innerHTML = `
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h5>Całkowity Payload</h5>
+                                <h3 class="text-primary">${(payloadStats.total_payload_bytes / 1024 / 1024).toFixed(2)} MB</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h5>Średni Throughput</h5>
+                                <h3 class="text-success">${(throughputStats.avg_throughput / 1024).toFixed(2)} KB/s</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h5>Peak Throughput</h5>
+                                <h3 class="text-warning">${(throughputStats.peak_throughput / 1024).toFixed(2)} KB/s</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h5>Efektywność</h5>
+                                <h3 class="text-info">${networkLoad.payload_efficiency.toFixed(1)}%</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error displaying network metrics:', error);
+    }
 }
 
 window.addEventListener('resize', function() {
