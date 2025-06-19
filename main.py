@@ -1808,6 +1808,50 @@ def download_report(filename):
    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
    return response
 
+@app.route('/export_csv/<filename>')
+def export_csv(filename):
+    try:
+        file_path = os.path.join(app.config['JSON_FOLDER'], filename)
+        
+        if not os.path.exists(file_path):
+            flash('Plik nie istnieje')
+            return redirect(url_for('index'))
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # Konwersja do DataFrame
+        df_data = []
+        for packet in data:
+            row = {
+                'Packet_Number': packet.get('packet_number', ''),
+                'Time': packet.get('time', ''),
+                'Length': packet.get('length', ''),
+                'Source_MAC': packet.get('ethernet', {}).get('src', ''),
+                'Destination_MAC': packet.get('ethernet', {}).get('dst', ''),
+                'Source_IP': packet.get('ip', {}).get('src', ''),
+                'Destination_IP': packet.get('ip', {}).get('dst', ''),
+                'Protocol': 'TCP' if 'tcp' in packet else 'UDP' if 'udp' in packet else 'Other',
+                'Source_Port': packet.get('tcp', packet.get('udp', {})).get('sport', ''),
+                'Destination_Port': packet.get('tcp', packet.get('udp', {})).get('dport', ''),
+            }
+            df_data.append(row)
+        
+        df = pd.DataFrame(df_data)
+        
+        # Utworzenie pliku CSV
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        csv_filename = f"packets_export_{timestamp}.csv"
+        csv_path = os.path.join(app.config['UPLOAD_FOLDER'], csv_filename)
+        
+        df.to_csv(csv_path, index=False, encoding='utf-8')
+        
+        return send_from_directory(app.config['UPLOAD_FOLDER'], csv_filename, as_attachment=True)
+        
+    except Exception as e:
+        flash(f'Błąd podczas eksportu CSV: {str(e)}')
+        return redirect(url_for('view_json', filename=filename))
+
 # Ścieżka do plików statycznych JavaScript i CSS
 @app.route('/static/<path:path>')
 def send_static(path):
