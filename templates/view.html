@@ -49,13 +49,18 @@
             height: 50vh;
         }
         }
-        #networkGraph, #macGraph {
-            width: 100%;
-            height: 500px;
-            border: 1px solid lightgray;
+        #networkGraph, #macGraph, #enhancedMacGraph {
+        width: 100%;
+        height: 700px !important;
+        min-height: 700px;
+        border: 1px solid lightgray;
+        border-radius: 8px;
         }
-        .tab-content {
-            padding: 15px;
+        @media (min-width: 768px) {
+            #networkGraph, #macGraph, #enhancedMacGraph {
+                height: 60vh !important; /* 60% wysokości okna */
+                min-height: 600px;
+            }
         }
     </style>
 </head>
@@ -752,39 +757,7 @@ function getMacVendor(mac) {
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                            
-                            <!-- Grafy sieciowe -->
-                            <div class="accordion-item">
-                                <h2 class="accordion-header" id="networkGraphsHeader">
-                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#networkGraphs" aria-expanded="false">
-                                        <i class="fas fa-project-diagram me-2"></i>Grafy komunikacji
-                                    </button>
-                                </h2>
-                                <div id="networkGraphs" class="accordion-collapse collapse" data-bs-parent="#reportOptionsAccordion">
-                                    <div class="accordion-body">
-                                        <div class="row">
-                                            <div class="col-md-6">
-                                                <div class="form-check">
-                                                    <input class="form-check-input" type="checkbox" value="network" id="option-network" checked>
-                                                    <label class="form-check-label" for="option-network">
-                                                        <i class="fas fa-sitemap me-1"></i>IP Communication graph
-                                                    </label>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <div class="form-check">
-                                                    <input class="form-check-input" type="checkbox" value="mac_network" id="option-mac-network" checked>
-                                                    <label class="form-check-label" for="option-mac-network">
-                                                        <i class="fas fa-ethernet me-1"></i>Enhanced MAC graph with protocols
-                                                    </label>
-                                                    <small class="text-muted d-block">Graf MAC z informacjami o protokołach</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            </div>                            
                         </div>
                     </div>
                     
@@ -888,14 +861,6 @@ function getMacVendor(mac) {
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" value="packet_size" id="option-size" checked>
                                     <label class="form-check-label" for="option-size">Packet size distribution</label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" value="network" id="option-network" checked>
-                                    <label class="form-check-label" for="option-network">IP Communication graph</label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" value="mac_network" id="option-mac-network" checked>
-                                    <label class="form-check-label" for="option-mac-network">MAC Communication graph</label>
                                 </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" value="top_ips" id="option-ips" checked>

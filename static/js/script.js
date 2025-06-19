@@ -841,56 +841,236 @@ function initPacketSizeChart() {
    });
 }
 
-// Graf komunikacji między hostami
+// Graf komunikacji między hostami (ulepszony na wzór grafu MAC)
 function initNetworkGraph() {
-   const networkContainer = document.getElementById('networkGraph');
-   const networkData = JSON.parse(document.getElementById('networkData').textContent);
-   
-   // Wykorzystanie biblioteki vis.js do wizualizacji grafu
-   const nodes = new vis.DataSet(networkData.nodes);
-   const edges = new vis.DataSet(networkData.edges);
-   
-   const data = { nodes, edges };
-   const options = {
-       nodes: {
-           shape: 'dot',
-           scaling: {
-               min: 10,
-               max: 30,
-               label: {
-                   min: 8,
-                   max: 30,
-                   drawThreshold: 8,
-                   maxVisible: 20
-               }
-           },
-           font: {
-               size: 12,
-               face: 'Tahoma'
-           }
-       },
-       edges: {
-           width: 0.15,
-           color: { inherit: 'from' },
-           smooth: {
-               type: 'continuous'
-           }
-       },
-       physics: {
-           stabilization: false,
-           barnesHut: {
-               gravitationalConstant: -80000,
-               springConstant: 0.001,
-               springLength: 200
-           }
-       },
-       interaction: {
-           tooltipDelay: 200,
-           hideEdgesOnDrag: true
-       }
-   };
-   
-   new vis.Network(networkContainer, data, options);
+    const networkContainer = document.getElementById('networkGraph');
+    const networkData = JSON.parse(document.getElementById('networkData').textContent);
+    
+    // Przygotowanie węzłów z lepszym kolorowaniem i rozmiarami
+    const nodes = new vis.DataSet(networkData.nodes.map(node => {
+        // Określenie koloru na podstawie typu IP (lokalne vs publiczne)
+        let nodeColor = '#4ECDC4'; // Domyślny kolor
+        let ipType = 'Inne prywatne';
+        
+        if (node.id.startsWith('192.168.') || node.id.startsWith('10.') || node.id.startsWith('172.')) {
+            nodeColor = '#96CEB4'; // Zielony dla adresów lokalnych
+            ipType = 'Adres lokalny';
+        } else if (node.id.startsWith('169.254.')) {
+            nodeColor = '#FECA57'; // Żółty dla APIPA
+            ipType = 'APIPA';
+        } else if (node.id === '0.0.0.0' || node.id === '255.255.255.255') {
+            nodeColor = '#FF6B6B'; // Czerwony dla specjalnych adresów
+            ipType = 'Adres specjalny';
+        } else if (!node.id.startsWith('192.168.') && !node.id.startsWith('10.') && !node.id.startsWith('172.') && !node.id.startsWith('169.254.')) {
+            nodeColor = '#54A0FF'; // Niebieski dla publicznych IP
+            ipType = 'Adres publiczny';
+        }
+        
+        // Znajdź liczbę połączeń dla tego węzła
+        const connections = networkData.edges.filter(edge => 
+            edge.from === node.id || edge.to === node.id
+        ).length;
+        
+        return {
+            ...node,
+            color: {
+                background: nodeColor,
+                border: '#000000',
+                highlight: {
+                    background: nodeColor,
+                    border: '#ff0000'
+                }
+            },
+            font: {
+                color: '#000000',
+                size: 12,
+                face: 'Arial'
+            },
+            shape: 'dot',
+            size: Math.max(15, Math.min(50, node.value * 2)), // Lepsze skalowanie rozmiaru
+            borderWidth: 2,
+            shadow: {
+                enabled: true,
+                color: 'rgba(0,0,0,0.3)',
+                size: 10,
+                x: 3,
+                y: 3
+            },
+            // Dodanie tooltipa który wyświetla się po najechaniu (prosty tekst)
+            title: `IP: ${node.id}\nTyp: ${ipType}\nPakiety: ${node.value}\nPołączenia: ${connections}`
+        };
+    }));
+    
+    const edges = new vis.DataSet(networkData.edges.map(edge => ({
+        ...edge,
+        width: Math.max(1, Math.min(8, edge.value / 3)), // Lepsze skalowanie grubości
+        color: {
+            color: '#848484',
+            highlight: '#ff0000',
+            hover: '#999999'
+        },
+        smooth: {
+            type: 'continuous',
+            roundness: 0.5
+        },
+        arrows: {
+            to: { 
+                enabled: true, 
+                scaleFactor: 1.2,
+                type: 'arrow'
+            }
+        },
+        shadow: {
+            enabled: true,
+            color: 'rgba(0,0,0,0.2)',
+            size: 5,
+            x: 2,
+            y: 2
+        },
+        // Dodanie tooltipa dla krawędzi (prosty tekst)
+        title: `${edge.from} → ${edge.to}\nPakiety: ${edge.value}`
+    })));
+    
+    const data = { nodes, edges };
+    const options = {
+        nodes: {
+            borderWidth: 2,
+            shadow: true,
+            scaling: {
+                min: 15,
+                max: 50,
+                label: {
+                    enabled: true,
+                    min: 10,
+                    max: 16,
+                    maxVisible: 30,
+                    drawThreshold: 5
+                }
+            }
+        },
+        edges: {
+            arrows: {
+                to: { enabled: true, scaleFactor: 1.2 }
+            },
+            shadow: true,
+            smooth: {
+                type: 'continuous',
+                forceDirection: 'none',
+                roundness: 0.5
+            }
+        },
+        physics: {
+            enabled: true,
+            barnesHut: {
+                gravitationalConstant: -8000,
+                centralGravity: 0.3,
+                springLength: 120,
+                springConstant: 0.04,
+                damping: 0.09,
+                avoidOverlap: 0.1
+            },
+            stabilization: {
+                iterations: 150,
+                updateInterval: 25
+            }
+        },
+        interaction: {
+            hover: true,
+            tooltipDelay: 300,
+            selectConnectedEdges: false,
+            hoverConnectedEdges: true,
+            zoomView: true,
+            dragView: true
+        },
+        layout: {
+            improvedLayout: true,
+            randomSeed: 42
+        }
+    };
+    
+    const network = new vis.Network(networkContainer, data, options);
+    
+    // Dodanie legendy typów IP
+    const legendContainer = document.createElement('div');
+    legendContainer.style.cssText = `
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        font-size: 12px;
+        font-family: Arial, sans-serif;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        z-index: 1000;
+    `;
+    
+    const ipTypeColors = {
+        'Lokalne (192.168.x.x, 10.x.x.x)': '#96CEB4',
+        'APIPA (169.254.x.x)': '#FECA57',
+        'Publiczne': '#54A0FF',
+        'Specjalne (0.0.0.0, 255.255.255.255)': '#FF6B6B',
+        'Inne prywatne': '#4ECDC4'
+    };
+    
+    let legendHTML = '<strong style="color: #333; margin-bottom: 8px; display: block;">Typy adresów IP:</strong>';
+    Object.entries(ipTypeColors).forEach(([type, color]) => {
+        legendHTML += `
+            <div style="margin: 4px 0; display: flex; align-items: center;">
+                <span style="display: inline-block; width: 14px; height: 14px; background: ${color}; margin-right: 8px; border-radius: 50%; border: 1px solid #333;"></span>
+                <span style="color: #333; font-size: 11px;">${type}</span>
+            </div>
+        `;
+    });
+    
+    legendContainer.innerHTML = legendHTML;
+    networkContainer.style.position = 'relative';
+    networkContainer.appendChild(legendContainer);
+    
+    // Event listenery dla dodatkowych funkcji
+    network.on("hoverNode", function (params) {
+        // Podświetl połączone węzły przy hover
+        const nodeId = params.node;
+        const connectedNodes = network.getConnectedNodes(nodeId);
+        const connectedEdges = network.getConnectedEdges(nodeId);
+        
+        // Opcjonalnie można dodać dodatkowe efekty hover
+        console.log(`Hover na węźle: ${nodeId}`);
+    });
+    
+    network.on("blurNode", function (params) {
+        // Przywróć normalny stan po opuszczeniu węzła
+        console.log(`Opuszczono węzeł: ${params.node}`);
+    });
+    
+    network.on("selectNode", function (params) {
+        if (params.nodes.length > 0) {
+            const nodeId = params.nodes[0];
+            const nodeData = nodes.get(nodeId);
+            
+            if (nodeData) {
+                // Znajdź wszystkie połączenia tego węzła
+                const connectedEdges = network.getConnectedEdges(nodeId);
+                const connections = connectedEdges.length;
+                
+                console.log(`Wybrano węzeł IP: ${nodeData.id}`);
+                console.log(`Total packets: ${nodeData.value}`);
+                console.log(`Connections: ${connections}`);
+            }
+        }
+    });
+    
+    // Animacja stabilizacji
+    network.on("stabilizationProgress", function(params) {
+        const progress = Math.round((params.iterations / params.total) * 100);
+        console.log(`Stabilizacja grafu IP: ${progress}%`);
+    });
+    
+    network.on("stabilizationIterationsDone", function() {
+        console.log("Graf IP ustabilizowany");
+        network.setOptions({ physics: false }); // Wyłącz fizykę po stabilizacji dla lepszej wydajności
+    });
 }
 
 // Graf komunikacji między adresami MAC

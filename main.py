@@ -977,7 +977,7 @@ def generate_pdf_report(filename, data, stats, options):
     # Spis treści
     elements.append(Paragraph("Table of Contents", subtitle_style))
     
-    # Tworzenie pozycji spisu treści
+    # Tworzenie pozycji spisu treści (USUNIĘTO GRAFY SIECIOWE)
     toc_items = []
     if 'summary' in options:
         toc_items.append("Summary")
@@ -1003,10 +1003,6 @@ def generate_pdf_report(filename, data, stats, options):
         toc_items.append("Time Distribution")
     if 'packet_size' in options and 'packet_size_distribution' in stats:
         toc_items.append("Packet Size Distribution")
-    if 'network' in options and 'network_graph' in stats:
-        toc_items.append("IP Network Communication Graph")
-    if 'mac_network' in options and 'enhanced_mac_graph' in stats:
-        toc_items.append("Enhanced MAC Communication Graph with Protocols")
     if 'top_ips' in options and stats['top_ips']:
         toc_items.append("Most Common IP Addresses")
     
@@ -1238,64 +1234,6 @@ def generate_pdf_report(filename, data, stats, options):
         img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
         elements.append(img)
         elements.append(Spacer(1, 0.3*inch))
-
-    # Dla grafu komunikacji IP:
-    if 'network' in options and 'network_graph' in stats:
-        elements.append(Paragraph("IP Network Communication Graph", subtitle_style))
-        
-        # Generowanie grafu sieci z lepszą jakością
-        chart_img = generate_chart_image('network', stats['network_graph'], 'IP Communication Graph', width=800, height=600)
-        img = Image(chart_img, width=550, height=450)
-        img.hAlign = 'CENTER'  # Wyśrodkowanie obrazu
-        elements.append(img)
-        elements.append(Spacer(1, 0.3*inch))
-    
-    # Dla grafu komunikacji MAC:
-    if 'mac_network' in options and 'enhanced_mac_graph' in stats:
-        elements.append(Paragraph("Enhanced MAC Communication Graph with Protocols", subtitle_style))
-        
-        chart_img = generate_chart_image('enhanced_mac_network', stats['enhanced_mac_graph'], 
-                                       'MAC Communication with Protocol Information', width=800, height=600)
-        img = Image(chart_img, width=550, height=450)
-        img.hAlign = 'CENTER'
-        elements.append(img)
-        elements.append(Spacer(1, 0.3*inch))
-        
-        # Dodaj tabelę z protokołami dla MAC
-        if 'mac_protocol_stats' in stats:
-            elements.append(Paragraph("MAC Address Protocol Distribution", subtitle_style))
-            
-            mac_protocol_data = [["MAC Address", "Vendor", "Dominant Protocol", "TCP", "UDP", "Other", "Total"]]
-            for mac, protocols in list(stats['mac_protocol_stats'].items())[:10]:  # Top 10
-                total_packets = sum(protocols.values())
-                dominant_protocol = max(protocols, key=protocols.get) if protocols else 'Unknown'
-                tcp_count = protocols.get('TCP', 0)
-                udp_count = protocols.get('UDP', 0)
-                other_count = total_packets - tcp_count - udp_count
-                
-                mac_protocol_data.append([
-                    mac,
-                    get_mac_vendor(mac),
-                    dominant_protocol,
-                    str(tcp_count),
-                    str(udp_count),
-                    str(other_count),
-                    str(total_packets)
-                ])
-            
-            mac_protocol_table = Table(mac_protocol_data, colWidths=[120, 80, 80, 40, 40, 40, 50])
-            mac_protocol_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 9),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ]))
-            elements.append(mac_protocol_table)
-            elements.append(Spacer(1, 0.3*inch))
     
     # Najczęściej występujące adresy IP (jeśli wybrane)
     if 'top_ips' in options and stats['top_ips']:
