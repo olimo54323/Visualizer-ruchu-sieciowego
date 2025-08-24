@@ -391,7 +391,7 @@ Wizualizer-ruchu-sieciowego/
 - **`main.py`** - Główna aplikacja Flask zawierająca wszystkie endpoint'y, logikę analizy PCAP i generowanie raportów
 - **`templates/view.html`** - Główny szablon interfejsu z dashboardem, wykresami i systemem filtrowania
 - **`static/js/script.js`** - JavaScript obsługujący wykresy (Chart.js), grafy sieciowe (vis.js) i interakcje użytkownika
-- 
+
 ---
 
 ## Autorzy
