@@ -15,7 +15,8 @@
 6. [Scenariusze użytkowania](#scenariusze-użytkowania)
 7. [Interfejs użytkownika](#interfejs-użytkownika)
 8. [Struktura projektu](#struktura-projektu)
-9. [Autorzy](#autorzy)
+9. [Testowanie](#testowanie)
+10. [Autorzy](#autorzy)
 
 ---
 
@@ -393,6 +394,10 @@ Wizualizer-ruchu-sieciowego/
 - **`static/js/script.js`** - JavaScript obsługujący wykresy (Chart.js), grafy sieciowe (vis.js) i interakcje użytkownika
 
 ---
+
+## Testowanie
+
+W folderze znajdują się 2 pliki cos.pcap oraz test2.pcap do przetestowania programu.
 
 ## Autorzy
 
